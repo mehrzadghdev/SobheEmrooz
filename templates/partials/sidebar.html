@@ -1,0 +1,29 @@
+{% from 'partials/icons.html' import icon %}
+{% macro navigation_link(href,label,symbol,active=false) %}
+<a class="side-link {{ 'is-active' if active }}" href="{{ href }}" title="{{ label }}" {% if active %}aria-current="page"{% endif %}>{{ icon(symbol) }}<span class="nav-label">{{ label }}</span></a>
+{% endmacro %}
+<nav class="side-navigation" id="side-navigation" aria-label="فهرست اصلی">
+  <div class="sidebar-heading"><span class="sidebar-title">رسانه و شفافیت</span><span class="badge">م/الف</span></div>
+  <div class="sidebar-links">
+    <span class="nav-section">داشبورد و گزارش‌ها</span>
+    {{ navigation_link(url_for('web.dashboard'),'نمای کلی توزیع','dashboard',request.endpoint == 'web.dashboard') }}
+    {{ navigation_link(url_for('web.reports'),'آگهی‌ها' if g.user else 'گزارش آگهی‌ها','advertisements',
+        (request.endpoint == 'web.reports' and request.args.get('view','ads') == 'ads') or request.endpoint in ['web.ad_new','web.ad_edit','web.ad_detail']) }}
+    {{ navigation_link(url_for('web.reports',view='media'),'سهم رسانه‌ها','media',
+        (request.endpoint == 'web.reports' and request.args.get('view') == 'media') or request.endpoint == 'web.media_detail') }}
+    {{ navigation_link(url_for('web.reports',view='organizations'),'گزارش سازمان‌ها','organizations',
+        request.endpoint == 'web.reports' and request.args.get('view') == 'organizations') }}
+    {% if g.user and g.user.role == 'admin' %}
+    <span class="nav-section">مدیریت سامانه</span>
+    {{ navigation_link(url_for('web.catalog',kind='outlets'),'مدیریت رسانه‌ها','media',
+        (request.endpoint == 'web.catalog' and request.view_args.get('kind') == 'outlets') or request.endpoint == 'web.media_form') }}
+    {% for kind,label,symbol in [('organizations','سازمان‌ها','organizations'),('subjects','موضوع‌ها','subjects')] %}
+    {{ navigation_link(url_for('web.catalog',kind=kind),label,symbol,request.endpoint == 'web.catalog' and request.view_args.get('kind') == kind) }}
+    {% endfor %}
+    {{ navigation_link(url_for('web.periods'),'دوره‌ها و سهم هدف','periods',request.endpoint in ['web.periods','web.period_edit']) }}
+    {{ navigation_link(url_for('web.users'),'حساب‌های کاربری','users',request.endpoint == 'web.users') }}
+    {{ navigation_link(url_for('web.audit_log'),'تاریخچه تغییرات','history',request.endpoint == 'web.audit_log') }}
+    {% endif %}
+  </div>
+  <div class="sidebar-profile"><span class="profile-avatar">{{ g.user.name[0] if g.user else 'ع' }}</span><span class="profile-detail">{{ g.user.name if g.user else 'دسترسی عمومی' }}<small>{{ roles[g.user.role] if g.user else 'گزارش‌ها برای همه در دسترس‌اند' }}</small></span></div>
+</nav>

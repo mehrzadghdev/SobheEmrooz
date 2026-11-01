@@ -1,0 +1,1 @@
+{% extends 'base.html' %}{% block title %}خطا {{ code }} | سامانه آگهی‌های دولتی{% endblock %}{% block content %}<section class="card empty-state"><span class="eyebrow">{{ code }}</span><h1>{{ message }}</h1><p>اطلاعات را بررسی کنید و دوباره تلاش کنید.</p><a class="button" href="{{ url_for('web.dashboard') }}">بازگشت به نمای کلی</a></section>{% endblock %}

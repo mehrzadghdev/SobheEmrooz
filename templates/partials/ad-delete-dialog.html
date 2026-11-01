@@ -1,0 +1,5 @@
+<dialog class="confirm-dialog no-print" id="ad-delete-dialog" aria-labelledby="ad-delete-title">
+  <div class="section-heading"><h2 id="ad-delete-title">حذف آگهی</h2><button type="button" class="icon-action secondary" data-dialog-close aria-label="بستن">{{ icon('close') }}</button></div>
+  <p>آگهی از گزارش عمومی و محاسبات سهمیه حذف می‌شود. تاریخچه و شماره م/الف حفظ می‌شوند.</p>
+  <form method="post" id="ad-delete-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="version" value=""><input type="hidden" name="return_to" value="reports"><label for="ad-delete-reason">دلیل حذف <span class="required-mark">*</span></label><textarea id="ad-delete-reason" name="reason" rows="3" maxlength="1000" required></textarea><div class="actions"><button class="danger">حذف آگهی</button><button type="button" class="secondary" data-dialog-close>انصراف</button></div></form>
+</dialog>
