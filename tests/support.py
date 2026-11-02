@@ -101,7 +101,7 @@ class AppTestCase(unittest.TestCase):
         data['preview_token'] = self.preview(data, ad)['token']
         if ad:
             data['version'] = str(ad.version)
-        return self.client.post(f'/advertisements/{ad.id}/edit' if ad else '/advertisements/new', data=data)
+        return self.client.post(f'/admin/advertisements/{ad.id}/edit' if ad else '/admin/advertisements/new', data=data)
 
 
 def png_bytes():

@@ -1,0 +1,6 @@
+<div class="report-result-heading"><h2>خلاصه نتایج</h2><p>{{ date_fields[filters.date_field] }}: {{ filters.start|jalali }} تا {{ filters.end|jalali }}</p></div>
+<section class="grid stats-grid filtered-stats" aria-label="خلاصه نتایج جستجو">
+  <article class="card stat-card"><span class="muted">تعداد آگهی‌ها</span><span class="stat">{{ totals[0]|number }}</span><span class="stat-caption">در محدوده جستجوی شما</span></article>
+  <article class="card stat-card"><span class="muted">حجم آگهی‌ها</span><span class="stat">{{ totals[1]|boxes }} <small>کادر</small></span><span class="stat-caption">مجموع حجم نتایج</span></article>
+  <article class="card stat-card"><span class="muted">مبلغ آگهی‌ها</span><span class="stat">{{ totals[2]|number }} <small>ریال</small></span><span class="stat-caption">مجموع مبلغ نتایج</span></article>
+</section>

@@ -1,0 +1,9 @@
+{% extends 'layouts/admin.html' %}
+{% from 'partials/back-link.html' import back_link %}
+{% from 'partials/icons.html' import icon %}
+{% block title %}{{ outlet.name }} | پنل مدیریت{% endblock %}
+{% block content %}
+{{ back_link(url_for('web.catalog',kind='outlets'), 'بازگشت به رسانه‌ها') }}
+<div class="page-heading"><div><h1>{{ outlet.name }}</h1><p><span class="badge {{ 'success' if outlet.active else 'warning' }}">{{ 'فعال' if outlet.active else 'غیرفعال' }}</span></p></div><div class="actions"><a class="button button-with-icon" href="{{ url_for('web.media_form',outlet_id=outlet.id) }}">{{ icon('edit') }} ویرایش رسانه</a></div></div>
+{% include 'partials/media-record.html' %}
+{% endblock %}

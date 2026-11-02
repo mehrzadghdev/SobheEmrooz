@@ -17,6 +17,18 @@ python -m flask --app app run --host 127.0.0.1 --port 5055
 
 Open **http://127.0.0.1:5055/**. Reports are public. The administrator command privately prompts for the password and creates a personal account. Accounts are created explicitly through CLI/admin actions; public registration is disabled. Login at `/login`.
 
+### Page navigation and installation
+
+Internal links and page forms update the main content through `static/js/page-navigation.js`, following the adjacent **Hamyar Sakhteman** example. The header, sidebar, and selected theme stay in place. A loading bar and fade/slide show navigation progress. Animated transitions last at least 0.3 seconds; motion respects the browser's reduced-motion setting. Back/Forward restores scroll positions, and date pickers, allocation previews, dialogs, and target totals initialize for each new page. Flask renders the HTML, so direct URLs and ordinary forms also work without JavaScript.
+
+Sign-in, sign-out, Excel exports, and attachment downloads use ordinary browser navigation. Add `data-native-navigation` to a link, form, or wrapper to opt out. Validation and stale-allocation responses display the updated form for review. Connection failures retain the current page and entered values; submitted writes are never retried automatically.
+
+The app is installable as a Persian RTL PWA with standalone mode, red newspaper icons, and an installation button when supported. On iPhone/iPad, the button explains **Share → Add to Home Screen**. Installation requires HTTPS or a local development origin such as `http://127.0.0.1:5055`.
+
+The service worker caches public CSS, JavaScript, fonts, icons, the manifest, and a generic Persian offline screen. Reports, account pages, CSRF tokens, allocation API responses, and advertisement attachments stay on the network. An offline navigation inside the app retains the current page; an offline launch or reload shows the connection screen. Recording changes requires a connection. Updates install without reloading an open form, and content-based cache versions remove superseded assets.
+
+Keep `/manifest.webmanifest`, `/service-worker.js`, and `/offline` routed to Flask when deploying behind a reverse proxy. The manifest and worker also respect a deployment URL prefix. Restart the application after deploying changed assets so their versions refresh. This feature requires no database migration.
+
 To seed the requested administrator account instead:
 
 ```sh
@@ -66,9 +78,13 @@ Public reports provide:
 - All supplied display columns, pagination, selected-column Excel export, and browser printing. Spreadsheet text is escaped against formula interpretation.
 - Clearly separated filtered results and full-period quota comparisons. A custom report can span allocation periods; outlet quotas always use the separately selected complete six-month period, with its own targets.
 
-Public reports default to approval date, so advertisements without that date do not appear until **تاریخ تخصیص** is selected. For signed-in staff, the advertisement list defaults to allocation date so newly entered records are immediately visible. Public dashboards and quotas include all nonvoid allocations regardless of approval or print status.
+Public reports default to approval date, so advertisements without that date do not appear until **تاریخ تخصیص** is selected. This behavior stays the same when a staff member signs in. The separate staff list at `/admin/advertisements` defaults to allocation date so newly entered records are immediately visible. Signing in opens this management list. Public dashboards and quotas include all nonvoid allocations regardless of approval or print status.
 
-Navigation uses a single sidebar with SVG icons. Reports have no duplicate tab bar. The advertisement list offers creation and viewing, with edit/delete actions for administrators. Deletion removes an advertisement from public reports and quotas while retaining its M.A. reference and audit history. **مدیریت رسانه‌ها** provides a single media table with create, view, edit, and delete/archive actions. Unused media can be deleted; media referenced by advertisements or period targets are archived instead so historical calculations remain valid.
+Navigation groups management routes first: **آگهی‌ها**, **رسانه‌ها**, **سازمان‌ها**, subjects, periods, accounts, and audit history. A separate **گزارش‌های عمومی** group follows, with a distinct icon for each destination. Operators see the advertisement management route; other management routes require an administrator. The active navigation item updates during navigation and browser Back/Forward.
+
+Public pages use `templates/public/` and `layouts/public.html`; management pages use `templates/admin/` and `layouts/admin.html`. Public advertisement and media profiles remain read-only even for signed-in administrators. Management links, forms, profiles, and actions use `/admin/` URLs; the earlier advertisement creation/edit/void URLs remain authenticated compatibility aliases. Voided records are only visible on the administrator detail page. Deletion removes an advertisement from public reports and quotas while retaining its M.A. reference and audit history. The **رسانه‌ها** table offers create, view, edit, and delete/archive actions. Unused media can be deleted; referenced media are archived so historical calculations remain valid.
+
+Advertisement search is a native accordion that starts closed on public and management pages. Inside it, common date, organization, and media filters appear above separate advanced-filter and table-column accordions. Active advanced filters remain open after submission. Summaries identify the selected date basis and range; organization names link to matching advertisement results while preserving filters. The public media table compares received volume and target volume in six columns, with a short expandable explanation. Accordions throughout the app share expanded-state styling, keyboard focus, chevrons, and animations that respect reduced motion.
 
 One optional PDF, PNG, or JPEG file up to 10 MiB can be attached. Files live outside static assets, use generated storage keys, and download with validated content types and attachment headers. The current file of a nonvoid advertisement is publicly downloadable. Replaced files remain in storage for historical audit and backup consistency.
 
@@ -81,6 +97,8 @@ One optional PDF, PNG, or JPEG file up to 10 MiB can be attached. Files live out
 | Edit or void saved advertisements | | | Yes |
 | Manage outlets, organizations, subjects, and period targets | | | Yes |
 | Create/deactivate accounts and view audit history | | | Yes |
+
+Organizations and subjects offer delete actions: unused entries are removed, while entries referenced by any advertisement (including voided records) are archived. Empty periods can be deleted together with their targets; periods with advertisement history cannot be deleted. Unused accounts can be deleted, and accounts with advertisements or audit activity are archived with immediate session invalidation. The current account and the final active administrator are protected. These actions require administrator access and CSRF tokens, record audit events, and use accessible in-app confirmation dialogs with action-specific labels, Escape/cancel support, and focus restoration. No database migration is required.
 
 Administrator corrections update the affected period totals and recovery state. Moving a record updates both periods. Voiding preserves the advertisement, reason, history, and reserved M.A. reference while removing it from public reports and quotas. Print cancellation alone does not void an allocation. Outlets already used in a period cannot be removed from that period's plan.
 
@@ -135,3 +153,13 @@ python scripts/run_tests.py
 ```
 
 The suite uses temporary databases and files. It covers allocation arithmetic, projected tolerance/recovery, fractional volumes, period boundaries and target isolation, overrides, concurrent M.A. submissions, stale previews/edits, authorization/CSRF/session invalidation, field round trips, report filters and exports, attachments, corrections/voiding, bootstrap, and backup readability. Node.js, if available, also checks Persian client calendar conversion. Run the application to inspect desktop/mobile layouts, light/dark mode, the date picker, and the live allocation preview.
+
+PWA checks also verify the manifest and icon dimensions, cache allowlist, deployment prefixes, session-free offline screen, and availability before database initialization. For optional real-browser regression tests:
+
+```sh
+npm ci
+npx playwright install chromium
+python scripts/run_browser_tests.py
+```
+
+The browser suite starts its own loopback server with a disposable database and tests navigation, loading feedback, form validation, stale previews, uploads/downloads, history, mobile/reduced motion, install prompts, offline recovery, and browsing without JavaScript. To use an already installed Chrome instead of downloading Chromium, set `SOBHE_BROWSER_CHANNEL=chrome` for the test command. Node.js and Playwright are only development dependencies.

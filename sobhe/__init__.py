@@ -58,7 +58,7 @@ def create_app(config=None, *, instance_path=None):
     def protect_request():
         g.user = None
         g.staged_files = []
-        if request.endpoint == 'static':
+        if request.endpoint == 'static' or (request.endpoint or '').startswith('pwa.'):
             return
         if request.method in ('POST', 'PUT', 'PATCH', 'DELETE'):
             supplied = request.form.get('csrf_token', '') or request.headers.get('X-CSRF-Token', '')
@@ -92,7 +92,7 @@ def create_app(config=None, *, instance_path=None):
         response.headers['Content-Security-Policy'] = (
             "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; "
             "object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'")
-        if request.endpoint != 'static':
+        if request.endpoint != 'static' and not (request.endpoint or '').startswith('pwa.'):
             response.headers['Cache-Control'] = 'no-store'
         return response
 
@@ -107,6 +107,8 @@ def create_app(config=None, *, instance_path=None):
 
     @app.context_processor
     def context():
+        if (request.endpoint or '').startswith('pwa.'):
+            return {}
         return dict(csrf_token=csrf_token, category_labels=category_labels(), roles=ROLES,
                     weights=WEIGHTS, ad_types=AD_TYPES, print_statuses=PRINT_STATUSES,
                     provinces=PROVINCES, columns=COLUMNS, date_fields=DATE_FIELDS,
@@ -136,5 +138,8 @@ def create_app(config=None, *, instance_path=None):
     def asset_version(endpoint, values):
         if endpoint == 'static' and values.get('filename') in versions:
             values.setdefault('v', versions[values['filename']])
+
+    from .pwa import init_app as init_pwa
+    init_pwa(app, versions)
 
     return app

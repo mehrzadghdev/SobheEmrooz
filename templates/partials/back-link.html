@@ -1,0 +1,4 @@
+{% from 'partials/icons.html' import icon %}
+{% macro back_link(href, label='بازگشت') -%}
+<div class="page-back no-print"><a class="button secondary page-back-link" href="{{ href }}">{{ icon('arrow-right') }}<span>{{ label }}</span></a></div>
+{%- endmacro %}

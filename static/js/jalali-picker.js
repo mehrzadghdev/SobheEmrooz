@@ -226,5 +226,7 @@
         });
     }
     initialize();
+    document.addEventListener('sobhe:page-render', initialize);
+    document.addEventListener('sobhe:before-render', () => { if (dialog.open) dialog.close(); });
     setInterval(updateHeaderDate, 60000);
 })();

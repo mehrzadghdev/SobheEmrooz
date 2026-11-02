@@ -1,0 +1,46 @@
+{% if view == 'ads' %}
+<details class="card no-print report-filters report-search">
+  <summary id="report-search-title"><span class="accordion-copy"><span>جستجو در آگهی‌ها</span><small>تاریخ، سازمان، رسانه و فیلترهای پیشرفته</small></span></summary>
+{% else %}
+<section class="card no-print report-filters" aria-labelledby="report-search-title">
+  <div class="section-heading"><div><h2 id="report-search-title">محدوده گزارش سازمان‌ها</h2><p>بازه زمانی و گزینه‌های دلخواه را انتخاب کنید، سپس «نمایش نتایج» را بزنید.</p></div></div>
+{% endif %}
+  <form method="get" id="report-filter-form" class="{{ 'accordion-body' if view == 'ads' }}">
+    <input type="hidden" name="year" value="{{ selected.year }}"><input type="hidden" name="half" value="{{ selected.half }}">
+    {% if not management %}<input type="hidden" name="view" value="{{ view }}">{% endif %}
+    {% if view == 'ads' %}<input type="hidden" name="column_selection" value="1">{% endif %}
+    <div class="fields report-date-fields">
+      <div><label for="date-field">جستجو بر اساس</label><select id="date-field" name="date_field">{% for key,label in date_fields.items() %}<option value="{{ key }}" {{ 'selected' if filters.date_field == key }}>{{ label }}</option>{% endfor %}</select></div>
+      <div><label for="report-start">از تاریخ</label><input id="report-start" name="start" type="date" value="{{ filters.start }}" required></div>
+      <div><label for="report-end">تا تاریخ</label><input id="report-end" name="end" type="date" value="{{ filters.end }}" required></div>
+    </div>
+    <p class="help-text report-date-help">{{ 'فقط آگهی‌هایی نمایش داده می‌شوند که تاریخ تأیید دارند. برای دیدن آگهی‌های جدید، «تاریخ تخصیص» را انتخاب کنید.' if filters.date_field == 'approval_date' else 'آگهی‌ها بر اساس تاریخ انتخاب‌شده جستجو می‌شوند.' }} حداکثر بازه: یک سال شمسی.</p>
+    <div class="fields report-basic-fields">
+      <div><label for="filter-organization">سازمان آگهی‌دهنده</label><select id="filter-organization" name="organization_id"><option value="">همه سازمان‌ها</option>{% for organization in organizations %}<option value="{{ organization.id }}" {{ 'selected' if request.args.get('organization_id') == organization.id|string }}>{{ organization.name }}</option>{% endfor %}</select></div>
+      <div><label for="filter-outlet">رسانه دریافت‌کننده</label><select id="filter-outlet" name="outlet_id"><option value="">همه رسانه‌ها</option>{% for outlet in outlets %}<option value="{{ outlet.id }}" {{ 'selected' if request.args.get('outlet_id') == outlet.id|string }}>{{ outlet.name }}</option>{% endfor %}</select></div>
+    </div>
+    <details class="filter-disclosure" {% if advanced_count %}open{% endif %}>
+      <summary><span class="accordion-copy"><span>جستجوی پیشرفته</span><small>شماره م/الف، مبلغ، موضوع و وضعیت چاپ</small></span>{% if advanced_count %}<span class="accordion-meta">{{ advanced_count }} فیلتر فعال</span>{% endif %}</summary>
+      <div class="accordion-body">
+        <div class="filter-group"><h3>شماره‌ها و مبالغ</h3><div class="fields">
+          {% for key,label in [('ma','شماره م/الف'),('id','شناسه آگهی'),('amount','مبلغ آگهی (ریال)'),('approved_amount','مبلغ تأییدشده (ریال)')] %}<fieldset><legend>{{ label }}</legend><div class="range-fields"><div><label for="{{ key }}-min">از</label><input id="{{ key }}-min" name="{{ key }}_min" value="{{ request.args.get(key ~ '_min','') }}" inputmode="numeric" placeholder="بدون محدودیت"></div><div><label for="{{ key }}-max">تا</label><input id="{{ key }}-max" name="{{ key }}_max" value="{{ request.args.get(key ~ '_max','') }}" inputmode="numeric" placeholder="بدون محدودیت"></div></div></fieldset>{% endfor %}
+        </div></div>
+        <div class="filter-group"><h3>موضوع و متن آگهی</h3><div class="fields">
+          <div><label for="filter-province">استان</label><select id="filter-province" name="province"><option value="">همه استان‌ها</option>{% for province in provinces %}<option {{ 'selected' if request.args.get('province') == province }}>{{ province }}</option>{% endfor %}</select></div>
+          <div><label for="filter-subject">موضوع</label><select id="filter-subject" name="subject_id"><option value="">همه موضوع‌ها</option>{% for subject in subjects %}<option value="{{ subject.id }}" {{ 'selected' if request.args.get('subject_id') == subject.id|string }}>{{ subject.name }}</option>{% endfor %}</select></div>
+          {% for key,label,placeholder in [('letter_number','شماره نامه','شماره نامه سازمان'),('subject_description','شرح موضوع','نام شرکت یا موضوع آگهی'),('ad_text','متن آگهی','بخشی از متن آگهی')] %}<div><label for="filter-{{ key }}">{{ label }}</label><input id="filter-{{ key }}" name="{{ key }}" value="{{ request.args.get(key,'') }}" placeholder="{{ placeholder }}" maxlength="500"></div>{% endfor %}
+        </div></div>
+        <div class="filter-group"><h3>نوع آگهی و وضعیت چاپ</h3><p class="help-text">خالی گذاشتن هر گروه یعنی نمایش همه گزینه‌های آن گروه.</p><div class="fields">
+          {% for key,label,options in [('ad_type','نوع آگهی',ad_types),('print_status','وضعیت چاپ',print_statuses)] %}<fieldset class="checkbox-group"><legend>{{ label }}</legend><button type="button" class="text-button" data-select-all="{{ key }}">انتخاب / لغو همه</button><div class="checkbox-grid">{% for option in options %}<label><input type="checkbox" name="{{ key }}" value="{{ option }}" {{ 'checked' if option in request.args.getlist(key) }}>{{ option }}</label>{% endfor %}</div></fieldset>{% endfor %}
+        </div></div>
+      </div>
+    </details>
+    {% if view == 'ads' %}
+    <details class="filter-disclosure column-selector">
+      <summary><span class="accordion-copy"><span>ستون‌های جدول</span><small>اطلاعاتی که در جدول و فایل اکسل می‌بینید</small></span><span class="accordion-meta" data-column-count>{{ selected_columns|length }} ستون</span></summary>
+      <div class="accordion-body"><p class="help-text">حداقل یک ستون انتخاب کنید.</p><button type="button" class="text-button" data-select-all="columns">انتخاب / لغو همه ستون‌ها</button><div class="checkbox-grid">{% for key,label in columns.items() %}<label><input type="checkbox" name="columns" value="{{ key }}" {{ 'checked' if key in selected_columns }}>{{ label }}</label>{% endfor %}</div></div>
+    </details>
+    {% endif %}
+    <div class="filter-actions"><div class="actions"><button type="submit">نمایش نتایج</button><a class="button secondary" href="{{ url_for(request.endpoint, year=selected.year,half=selected.half) if management else url_for('web.reports', year=selected.year,half=selected.half,view=view) }}">پاک کردن فیلترها</a></div>{% if view == 'ads' %}<label class="inline">نتیجه در هر صفحه<select name="per_page">{% for size in [25,50,100] %}<option value="{{ size }}" {{ 'selected' if per_page == size }}>{{ size }}</option>{% endfor %}</select></label>{% endif %}</div>
+  </form>
+{% if view == 'ads' %}</details>{% else %}</section>{% endif %}

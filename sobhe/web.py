@@ -56,11 +56,17 @@ def query_url(**changes):
 
 @bp.app_context_processor
 def helpers():
-    return {'query_url': query_url, 'report_cell': report.cell}
+    management_endpoints = {'web.advertisements', 'web.ad_new', 'web.ad_edit', 'web.admin_ad_detail',
+                            'web.ad_void', 'web.catalog', 'web.media_form', 'web.admin_media_detail',
+                            'web.media_delete', 'web.periods', 'web.period_edit', 'web.category_settings',
+                            'web.users', 'web.audit_log'}
+    management = request.endpoint in management_endpoints or request.path.startswith('/admin/')
+    return {'query_url': query_url, 'report_cell': report.cell,
+            'page_space': 'admin' if management else 'public'}
 
 
-@bp.route('/')
 @bp.route('/dashboard')
+@bp.route('/')
 def dashboard():
     try:
         period, selected = chosen_period()
@@ -68,18 +74,28 @@ def dashboard():
         abort(400, str(error))
     state = a.snapshot(period)
     query = Advertisement.query.filter_by(period_id=period.id).filter(Advertisement.voided_at.is_(None)) if period else None
-    return render_template('dashboard.html', selected=selected, period=period, state=state,
+    return render_template('public/dashboard.html', selected=selected, period=period, state=state,
                            ad_count=query.count() if query is not None else 0,
                            recent=query.order_by(Advertisement.id.desc()).limit(6).all() if query is not None else [])
 
 
 @bp.route('/reports')
 def reports():
+    return report_page()
+
+
+@bp.route('/admin/advertisements')
+@access()
+def advertisements():
+    return report_page(management=True)
+
+
+def report_page(management=False):
     try:
         period, selected = chosen_period()
-        view = request.args.get('view', 'ads')
+        view = 'ads' if management else request.args.get('view', 'ads')
         filter_args = request.args.copy()
-        if g.user and view == 'ads' and 'date_field' not in filter_args:
+        if management and 'date_field' not in filter_args:
             filter_args['date_field'] = 'allocation_date'
         query, filters = report.filtered_query(filter_args, selected.year, selected.half)
         columns = report.selected_columns(request.args)
@@ -95,7 +111,7 @@ def reports():
                                  func.coalesce(func.sum(Advertisement.amount), 0)).one()
     state = a.snapshot(period)
     organizations = query.join(Organization).with_entities(
-        Organization.name, func.count(Advertisement.id).label('count'),
+        Organization.id.label('id'), Organization.name, func.count(Advertisement.id).label('count'),
         func.sum(Advertisement.volume_units).label('volume'), func.coalesce(func.sum(Advertisement.amount), 0).label('amount')
     ).group_by(Organization.id, Organization.name).order_by(func.sum(Advertisement.volume_units).desc()).all()
     if request.args.get('export') == 'xlsx':
@@ -116,7 +132,13 @@ def reports():
         return spreadsheet(headers, data)
     rows = query.options(joinedload(Advertisement.organization), joinedload(Advertisement.outlet),
                           joinedload(Advertisement.subject)).order_by(Advertisement.id.desc()).offset((page - 1) * per_page).limit(per_page).all()
-    return render_template('reports.html', period=period, selected=selected, filters=filters, state=state,
+    advanced_keys = ('id_min', 'id_max', 'ma_min', 'ma_max', 'amount_min', 'amount_max',
+                     'approved_amount_min', 'approved_amount_max', 'province', 'subject_id',
+                     'letter_number', 'subject_description', 'ad_text', 'ad_type', 'print_status')
+    advanced_count = sum(bool(request.args.get(key)) for key in advanced_keys)
+    return render_template('admin/advertisements.html' if management else 'public/reports.html',
+                           management=management, advanced_count=advanced_count,
+                           period=period, selected=selected, filters=filters, state=state,
                            selected_columns=columns, rows=rows, totals=totals, grouped_organizations=organizations,
                            page=page, per_page=per_page, pages=max(1, (totals[0] + per_page - 1) // per_page), view=view,
                            outlets=Outlet.query.order_by(Outlet.name).all(),
@@ -159,10 +181,10 @@ def login():
             g.user = user
             s.audit('login', f'user:{user.id}')
             db.session.commit()
-            return redirect(url_for('web.dashboard'))
+            return redirect(url_for('web.advertisements'))
         flash('نام کاربری یا رمز عبور معتبر نیست یا حساب غیرفعال است.', 'danger')
-        return render_template('login.html'), 400
-    return render_template('login.html')
+        return render_template('public/login.html'), 400
+    return render_template('public/login.html')
 
 
 @bp.route('/logout', methods=['POST'])
@@ -202,18 +224,20 @@ def ad_form(data, ad=None, preview_data=None, status=200):
     except ValueError:
         period = a.find_period(s.today())
     targets = period.targets if period else []
-    return render_template('ad-form.html', data=data, ad=ad, preview=preview_data, period=period,
+    return render_template('admin/ad-form.html', data=data, ad=ad, preview=preview_data, period=period,
                            targets=targets, organizations=Organization.query.order_by(Organization.name).all(),
                            subjects=Subject.query.order_by(Subject.name).all()), status
 
 
 @bp.route('/advertisements/new', methods=['GET', 'POST'])
+@bp.route('/admin/advertisements/new', methods=['GET', 'POST'])
 @access()
 def ad_new():
     return save_ad()
 
 
 @bp.route('/advertisements/<int:ad_id>/edit', methods=['GET', 'POST'])
+@bp.route('/admin/advertisements/<int:ad_id>/edit', methods=['GET', 'POST'])
 @access(admin=True)
 def ad_edit(ad_id):
     ad = db.get_or_404(Advertisement, ad_id)
@@ -274,7 +298,7 @@ def save_ad(ad=None):
         db.session.commit()
         g.staged_files = []
         flash('آگهی و تخصیص با موفقیت ثبت شد.', 'success')
-        return redirect(url_for('web.ad_detail', ad_id=ad.id))
+        return redirect(url_for('web.admin_ad_detail', ad_id=ad.id))
     except (ValueError, SQLAlchemyError) as error:
         db.session.rollback()
         for path in g.staged_files:
@@ -295,12 +319,23 @@ def save_ad(ad=None):
 
 @bp.route('/advertisements/<int:ad_id>')
 def ad_detail(ad_id):
+    return advertisement_detail(ad_id)
+
+
+@bp.route('/admin/advertisements/<int:ad_id>')
+@access()
+def admin_ad_detail(ad_id):
+    return advertisement_detail(ad_id, management=True)
+
+
+def advertisement_detail(ad_id, management=False):
     ad = db.get_or_404(Advertisement, ad_id)
-    if ad.voided_at and (not g.user or g.user.role != 'admin'):
+    if ad.voided_at and (not management or g.user.role != 'admin'):
         abort(404)
     state = a.snapshot(ad.period)
     outlet_stats = next((row for row in state['rows'] if row['outlet_id'] == ad.outlet_id), None)
-    return render_template('ad-detail.html', ad=ad, stats=outlet_stats)
+    return render_template('admin/ad-detail.html' if management else 'public/ad-detail.html',
+                           ad=ad, stats=outlet_stats)
 
 
 @bp.route('/advertisements/<int:ad_id>/file')
@@ -315,6 +350,7 @@ def attachment(ad_id):
 
 
 @bp.route('/advertisements/<int:ad_id>/void', methods=['POST'])
+@bp.route('/admin/advertisements/<int:ad_id>/void', methods=['POST'])
 @access(admin=True)
 def ad_void(ad_id):
     ad = db.get_or_404(Advertisement, ad_id)
@@ -335,8 +371,8 @@ def ad_void(ad_id):
         db.session.rollback()
         flash(str(error), 'danger')
     if request.form.get('return_to') == 'reports':
-        return redirect(url_for('web.reports', year=ad.period.year, half=ad.period.half, date_field='allocation_date'))
-    return redirect(url_for('web.ad_detail', ad_id=ad_id))
+        return redirect(url_for('web.advertisements', year=ad.period.year, half=ad.period.half))
+    return redirect(url_for('web.admin_ad_detail', ad_id=ad_id))
 
 
 CATALOGS = {'outlets': (Outlet, 'رسانه‌ها'), 'organizations': (Organization, 'سازمان‌های آگهی‌دهنده'),
@@ -373,8 +409,32 @@ def catalog(kind):
     if kind == 'outlets':
         used_ids = {row[0] for row in db.session.query(Advertisement.outlet_id).distinct()}
         used_ids.update(row[0] for row in db.session.query(OutletTarget.outlet_id).distinct())
-        return render_template('media.html', rows=rows, used_ids=used_ids)
-    return render_template('catalog.html', kind=kind, title=title, rows=rows)
+        return render_template('admin/media.html', rows=rows, used_ids=used_ids)
+    reference = Advertisement.organization_id if kind == 'organizations' else Advertisement.subject_id
+    used_ids = {row[0] for row in db.session.query(reference).filter(reference.is_not(None)).distinct()}
+    return render_template('admin/catalog.html', kind=kind, title=title, rows=rows, used_ids=used_ids)
+
+
+@bp.route('/admin/catalog/<kind>/<int:row_id>/delete', methods=['POST'])
+@access(admin=True)
+def catalog_delete(kind, row_id):
+    if kind not in ('organizations', 'subjects'):
+        abort(404)
+    model, _ = CATALOGS[kind]
+    row = db.get_or_404(model, row_id)
+    before = {'id': row.id, 'name': row.name, 'active': row.active}
+    reference = Advertisement.organization_id if kind == 'organizations' else Advertisement.subject_id
+    label = 'سازمان' if kind == 'organizations' else 'موضوع'
+    if Advertisement.query.filter(reference == row.id).first():
+        row.active = False
+        s.audit('catalog_archive', f'{kind}:{row.id}', {'before': before, 'active': False})
+        flash(f'{label} بایگانی شد؛ سوابق آگهی‌ها حفظ شدند.', 'success')
+    else:
+        s.audit('catalog_delete', f'{kind}:{row.id}', {'before': before})
+        db.session.delete(row)
+        flash(f'{label} حذف شد.', 'success')
+    db.session.commit()
+    return redirect(url_for('web.catalog', kind=kind))
 
 
 @bp.route('/admin/media/new', defaults={'outlet_id': None})
@@ -382,11 +442,21 @@ def catalog(kind):
 @access(admin=True)
 def media_form(outlet_id):
     outlet = db.get_or_404(Outlet, outlet_id) if outlet_id else None
-    return render_template('media-form.html', outlet=outlet)
+    return render_template('admin/media-form.html', outlet=outlet)
 
 
 @bp.route('/media/<int:outlet_id>')
 def media_detail(outlet_id):
+    return outlet_detail(outlet_id)
+
+
+@bp.route('/admin/media/<int:outlet_id>')
+@access(admin=True)
+def admin_media_detail(outlet_id):
+    return outlet_detail(outlet_id, management=True)
+
+
+def outlet_detail(outlet_id, management=False):
     outlet = db.get_or_404(Outlet, outlet_id)
     try:
         period, selected = chosen_period()
@@ -395,7 +465,8 @@ def media_detail(outlet_id):
     state = a.snapshot(period)
     stats = next((row for row in state['rows'] if row['outlet_id'] == outlet.id), None)
     query = Advertisement.query.filter_by(outlet_id=outlet.id, period_id=period.id if period else None).filter(Advertisement.voided_at.is_(None))
-    return render_template('media-detail.html', outlet=outlet, stats=stats, selected=selected,
+    return render_template('admin/media-detail.html' if management else 'public/media-detail.html',
+                           management=management, outlet=outlet, stats=stats, selected=selected,
                            ad_count=query.count(), recent=query.order_by(Advertisement.id.desc()).limit(10).all())
 
 
@@ -442,7 +513,35 @@ def periods():
         except (ValueError, IntegrityError) as error:
             db.session.rollback()
             flash(str(error) if isinstance(error, ValueError) else 'دوره تکراری است.', 'danger')
-    return render_template('periods.html', periods=Period.query.order_by(Period.year.desc(), Period.half.desc()).all())
+    used_ids = {row[0] for row in db.session.query(Advertisement.period_id).distinct()}
+    return render_template('admin/periods.html', periods=Period.query.order_by(Period.year.desc(), Period.half.desc()).all(),
+                           used_ids=used_ids)
+
+
+@bp.route('/admin/periods/<int:period_id>/delete', methods=['POST'])
+@access(admin=True)
+def period_delete(period_id):
+    period = db.get_or_404(Period, period_id)
+    try:
+        if s.integer(request.form.get('revision'), 1) != period.revision:
+            raise ValueError('برنامه دوره تغییر کرده است؛ صفحه را تازه کنید.')
+        if Advertisement.query.filter_by(period_id=period.id).first():
+            raise ValueError('دوره دارای سابقه آگهی قابل حذف نیست.')
+        before = {'id': period.id, 'year': period.year, 'half': period.half,
+                  'active': period.active, 'revision': period.revision,
+                  'targets': [{'outlet_id': target.outlet_id, 'category': target.category, 'share_bp': target.share_bp}
+                              for target in period.targets]}
+        for target in list(period.targets):
+            db.session.delete(target)
+        db.session.flush()
+        s.audit('period_delete', f'period:{period.id}', {'before': before})
+        db.session.delete(period)
+        db.session.commit()
+        flash('دوره و برنامه سهم رسانه‌های آن حذف شدند.', 'success')
+    except ValueError as error:
+        db.session.rollback()
+        flash(str(error), 'danger')
+    return redirect(url_for('web.periods'))
 
 
 @bp.route('/admin/periods/<int:period_id>', methods=['GET', 'POST'])
@@ -494,7 +593,7 @@ def period_edit(period_id):
         return redirect(url_for('web.period_edit', period_id=period_id))
     targets = {target.outlet_id: target for target in period.targets}
     totals = {key: sum(t.share_bp for t in targets.values() if t.category == key) for key in CATEGORIES}
-    return render_template('period-edit.html', period=period, targets=targets, share_totals=totals,
+    return render_template('admin/period-edit.html', period=period, targets=targets, share_totals=totals,
                            outlets=Outlet.query.order_by(Outlet.name).all())
 
 
@@ -551,7 +650,39 @@ def users():
             db.session.rollback()
             flash(str(error) if isinstance(error, ValueError) else 'نام کاربری قبلاً ثبت شده است.', 'danger')
         return redirect(url_for('web.users'))
-    return render_template('users.html', users=User.query.order_by(User.id).all())
+    used_ids = {row[0] for row in db.session.query(Advertisement.creator_id).distinct()}
+    used_ids.update(row[0] for row in db.session.query(AuditEvent.actor_id).filter(AuditEvent.actor_id.is_not(None)).distinct())
+    return render_template('admin/users.html', users=User.query.order_by(User.id).all(), used_ids=used_ids)
+
+
+@bp.route('/admin/users/<int:user_id>/delete', methods=['POST'])
+@access(admin=True)
+def user_delete(user_id):
+    user = db.get_or_404(User, user_id)
+    try:
+        if user.active and user.role == 'admin' and not User.query.filter(
+                User.id != user.id, User.role == 'admin', User.active.is_(True)).count():
+            raise ValueError('آخرین مدیر فعال سامانه قابل حذف یا بایگانی نیست.')
+        if user.id == g.user.id:
+            raise ValueError('حسابی که با آن وارد شده‌اید قابل حذف یا بایگانی نیست.')
+        if s.integer(request.form.get('auth_version'), 1) != user.auth_version:
+            raise ValueError('حساب کاربری تغییر کرده است؛ صفحه را تازه کنید.')
+        before = {'id': user.id, 'username': user.username, 'name': user.name, 'role': user.role, 'active': user.active}
+        referenced = Advertisement.query.filter_by(creator_id=user.id).first() or AuditEvent.query.filter_by(actor_id=user.id).first()
+        if referenced:
+            user.active = False
+            user.auth_version += 1
+            s.audit('user_archive', f'user:{user.id}', {'before': before, 'active': False})
+            flash('حساب بایگانی و دسترسی آن بسته شد؛ سوابق فعالیت حفظ شدند.', 'success')
+        else:
+            s.audit('user_delete', f'user:{user.id}', {'before': before})
+            db.session.delete(user)
+            flash('حساب کاربری حذف شد.', 'success')
+        db.session.commit()
+    except ValueError as error:
+        db.session.rollback()
+        flash(str(error), 'danger')
+    return redirect(url_for('web.users'))
 
 
 @bp.route('/admin/audit')
@@ -562,5 +693,5 @@ def audit_log():
     except ValueError as error:
         abort(400, str(error))
     query = AuditEvent.query.order_by(AuditEvent.id.desc())
-    return render_template('audit.html', events=query.offset((page - 1) * 30).limit(30).all(), page=page,
+    return render_template('admin/audit.html', events=query.offset((page - 1) * 30).limit(30).all(), page=page,
                            pages=max(1, (query.count() + 29) // 30))

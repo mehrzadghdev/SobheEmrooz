@@ -1,0 +1,13 @@
+{% from 'partials/icons.html' import icon %}
+<dialog class="confirm-dialog confirmation-dialog no-print" id="confirmation-dialog" aria-labelledby="confirmation-title" aria-describedby="confirmation-description" data-variant="primary">
+  <div class="confirmation-heading">
+    <span class="confirmation-icon" aria-hidden="true">{{ icon('delete', 'confirmation-delete-icon') }}{{ icon('archive', 'confirmation-archive-icon') }}{{ icon('check', 'confirmation-check-icon') }}</span>
+    <h2 id="confirmation-title">تأیید عملیات</h2>
+    <button type="button" class="icon-action secondary" data-dialog-close aria-label="بستن">{{ icon('close') }}</button>
+  </div>
+  <p id="confirmation-description"></p>
+  <div class="confirmation-actions">
+    <button type="button" class="secondary" id="confirmation-cancel" data-dialog-close autofocus>انصراف</button>
+    <button type="button" id="confirmation-accept">تأیید</button>
+  </div>
+</dialog>

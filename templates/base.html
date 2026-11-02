@@ -2,35 +2,50 @@
 <!doctype html>
 <html lang="fa" dir="rtl" data-theme="light">
 <head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#da1214">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="صبح امروز">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="manifest" href="{{ url_for('pwa.manifest') }}">
+  <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
   <title>{% block title %}سامانه آگهی‌های دولتی{% endblock %}</title>
   <link rel="icon" href="{{ url_for('static', filename='logo.png') }}" type="image/png">
   <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/fonts.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/workspaces.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/pwa.css') }}">
+  <script src="{{ url_for('static', filename='js/pwa.js') }}" data-worker-url="{{ url_for('pwa.service_worker') }}" data-scope="{{ url_for('web.dashboard') }}" defer></script>
   <script src="{{ url_for('static', filename='js/jalali-date.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/jalali-picker.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/allocation.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/page-navigation.js') }}" defer></script>
   {% block scripts %}{% endblock %}
 </head>
-<body class="with-sidebar">
+<body class="with-sidebar" data-space="{{ page_space }}">
+<div class="navigation-progress" id="navigation-progress" hidden role="progressbar" aria-label="در حال بارگذاری صفحه"></div>
+<div class="visually-hidden" id="navigation-status" role="status" aria-live="polite"></div>
 <a href="#main-content" class="skip-link">رفتن به محتوای اصلی</a>
 <header class="site-header">
   <div class="header-main">
     <button type="button" class="nav-toggle secondary" id="navigation-toggle" aria-label="نمایش فهرست" aria-controls="side-navigation" aria-expanded="false">{{ icon('menu') }}</button>
-    <a class="brand" href="{{ url_for('web.dashboard') }}"><img src="{{ url_for('static', filename='logo.png') }}" alt="نشان سامانه آگهی‌های دولتی" width="200" height="68"><span>سامانه آگهی‌های دولتی<small>توزیع عادلانه، گزارش شفاف</small></span></a>
   </div>
   <div class="account">
     <time class="header-date" data-header-today datetime="{{ today }}">{{ today|jalali }}</time>
+    <button class="secondary pwa-install" id="pwa-install" type="button" aria-label="نصب برنامه" title="نصب برنامه" hidden>{{ icon('install') }}</button>
     <button class="secondary theme-toggle" id="theme-toggle" type="button" aria-label="تغییر حالت روشن و تیره" aria-pressed="false" hidden><svg class="theme-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 13A8.5 8.5 0 0 1 11 3.5 8.5 8.5 0 1 0 20.5 13Z"/></svg><svg class="theme-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></svg></button>
-    {% if g.user %}<form method="post" action="{{ url_for('web.logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary">خروج</button></form>{% else %}<a class="button" href="{{ url_for('web.login') }}">ورود کاربران</a>{% endif %}
+    {% if g.user %}<form method="post" action="{{ url_for('web.logout') }}" data-native-navigation><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary">خروج</button></form>{% else %}<a class="button" href="{{ url_for('web.login') }}" data-native-navigation>ورود کاربران</a>{% endif %}
   </div>
 </header>
+{% include 'partials/pwa.html' %}
+{% include 'partials/confirm-dialog.html' %}
 {% include 'partials/sidebar.html' %}
 <div class="sidebar-backdrop" id="sidebar-backdrop" hidden></div>
-<main id="main-content" class="site-main" tabindex="-1">
+<main id="main-content" class="site-main" tabindex="-1" data-space="{{ page_space }}" data-session="{{ (g.user.id|string) ~ ':' ~ (g.user.auth_version|string) ~ ':' ~ g.user.role if g.user else 'public' }}">
   {% if demo_mode %}<div class="demo-banner">نسخه نمایشی · آگهی‌ها و مبالغ این نمونه برای بررسی امکانات سامانه هستند.</div>{% endif %}
   {% for category, message in get_flashed_messages(with_categories=true) %}<div class="alert {{ category }}" role="{{ 'alert' if category in ['danger','warning'] else 'status' }}">{{ message }}</div>{% endfor %}
   {% block content %}{% endblock %}

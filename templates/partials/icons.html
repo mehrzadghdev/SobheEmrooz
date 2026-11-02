@@ -8,12 +8,18 @@
   'periods': ['M8 2v4 M16 2v4 M3 10h18 M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z', 'M8 14h2 M14 14h2 M8 18h2 M14 18h2'],
   'users': ['M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M22 21v-2a4 4 0 0 0-3-3.87', 'M13 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0z M16 3.13a4 4 0 0 1 0 7.75'],
   'history': ['M3 11a9 9 0 1 1 2.6 6.4 M3 3v8h8', 'M12 7v5l3 2'],
+  'report': ['M9 4H5v18h14V4h-4 M9 2h6v4H9z', 'M8 13l3 3 5-6'],
+  'distribution': ['M12 3v9h9', 'M20.5 7A9 9 0 1 1 8 3.9'],
+  'organization-report': ['M4 20V10 M10 20V4 M16 20v-7 M22 20H2', 'M15 6l2 2 4-4'],
   'plus': ['M12 5v14 M5 12h14'],
   'edit': ['M16 3a2.12 2.12 0 0 1 3 3L9 16l-4 1 1-4z', 'M14 5l3 3 M20 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5'],
   'delete': ['M3 6h18 M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2 M5 6l1 14a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1l1-14', 'M10 10v7 M14 10v7'],
   'archive': ['M3 3h18v5H3z M5 8v12a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8 M10 12h4'],
   'view': ['M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z', 'M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z'],
   'menu': ['M4 6h16 M4 12h16 M4 18h16'],
+  'arrow-right': ['M5 12h14 M13 6l6 6-6 6'],
+  'check': ['M5 12l4 4L19 6'],
+  'install': ['M12 3v12 M7 10l5 5 5-5', 'M4 15v5a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5'],
   'close': ['M6 6l12 12 M6 18L18 6']
 } %}
 <svg class="ui-icon {{ class_name }}" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">{% for path in paths.get(name, paths['advertisements']) %}<path d="{{ path }}"/>{% endfor %}</svg>

@@ -113,9 +113,9 @@ class MediaManagementTests(AppTestCase):
 class AdvertisementManagementTests(AppTestCase):
     def test_staff_listing_defaults_to_allocation_date_so_new_ads_are_visible(self):
         ad = self.add_ad()
-        result = self.client.get('/reports?year=1405&half=2')
+        result = self.client.get('/admin/advertisements?year=1405&half=2')
         self.assertEqual(result.status_code,200)
-        self.assertIn(f'/advertisements/{ad.id}',result.get_data(as_text=True))
+        self.assertIn(f'/admin/advertisements/{ad.id}',result.get_data(as_text=True))
         self.assertIn('ثبت آگهی جدید',result.get_data(as_text=True))
 
     def test_edit_and_delete_actions_are_admin_only(self):
@@ -124,16 +124,17 @@ class AdvertisementManagementTests(AppTestCase):
         self.assertNotIn('data-delete-ad',self.client.get(path).get_data(as_text=True))
         self.assertNotIn('data-delete-ad',self.app.test_client().get(path).get_data(as_text=True))
         self.sign_in(admin=True)
-        html=self.client.get(path).get_data(as_text=True)
-        self.assertIn(f'/advertisements/{ad.id}/edit',html)
-        self.assertIn(f'data-delete-url="/advertisements/{ad.id}/void"',html)
+        self.assertNotIn('data-delete-ad',self.client.get(path).get_data(as_text=True))
+        html=self.client.get('/admin/advertisements?year=1405&half=2').get_data(as_text=True)
+        self.assertIn(f'/admin/advertisements/{ad.id}/edit',html)
+        self.assertIn(f'data-delete-url="/admin/advertisements/{ad.id}/void"',html)
 
     def test_delete_from_listing_returns_to_list_and_recalculates_quota(self):
         ad=self.add_ad()
         self.sign_in(admin=True)
         result=self.client.post(f'/advertisements/{ad.id}/void',data={'version':ad.version,'reason':'ثبت تکراری','return_to':'reports'})
         self.assertEqual(result.status_code,302)
-        self.assertIn('/reports?',result.location)
+        self.assertIn('/admin/advertisements?',result.location)
         self.assertIsNotNone(ad.voided_at)
         self.assertEqual(a.snapshot(self.period)['total'],'0')
         self.assertEqual(self.app.test_client().get(f'/advertisements/{ad.id}').status_code,404)
