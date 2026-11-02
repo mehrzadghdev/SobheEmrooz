@@ -2,6 +2,7 @@
 __pycache__/
 *.py[cod]
 instance/
+data/
 .env
 .DS_Store
 outputs/

@@ -123,6 +123,16 @@ The response includes period, recommendation, current and projected selected-out
 
 ## Deployment and persistent data
 
+For the existing Chabokan Flask host **sobhe-emrooz**, follow
+[the Chabokan deployment guide](deployment/CHABOKAN.md). It includes dashboard
+settings, CLI login/deployment commands, permanent storage, and first-account
+setup. `chabok.json` selects this service; `.chabokignore` keeps local data and
+secrets out of uploads. Set `SOBHE_DATA_DIR=/data` in the host environment and
+register `/data` as a permanent path so the database, attachments, and backups
+are kept together across deployments.
+
+For self-managed hosting:
+
 ```sh
 export SOBHE_DATA_DIR=/absolute/path/to/persistent-data
 export SOBHE_ENV=production
