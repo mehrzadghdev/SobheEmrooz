@@ -12,10 +12,10 @@ from pathlib import Path
 import click
 from flask import current_app
 from sqlalchemy import inspect
+from sqlalchemy.schema import CreateTable, CreateIndex
 from werkzeug.security import generate_password_hash
 
 from .allocations import update_recovery
-from .constants import CATEGORY_LABELS
 from .models import (Advertisement, AuditEvent, Organization, Outlet, Period,
                      SchemaVersion, Setting, Subject, User, db)
 from .membership import enroll_period
@@ -28,47 +28,160 @@ def migrate():
         if 'schema_version' not in tables:
             raise click.ClickException('Unversioned database; refusing to alter it. Use a new SOBHE_DATA_DIR.')
         versions = [row.version for row in SchemaVersion.query.order_by(SchemaVersion.version)]
-        if versions == [1, 2]:
-            return 'Schema version 2 is already current.'
-        if versions != [1]:
+        if versions == [1, 2, 3, 4, 5]:
+            return 'Schema version 5 is already current.'
+        if versions not in ([1], [1, 2], [1, 2, 3], [1, 2, 3, 4]):
             raise click.ClickException('Unsupported schema version; no changes made.')
-        try:
-            connection = db.session.connection()
-            connection.exec_driver_sql('BEGIN IMMEDIATE')
-            # Refuse a broken legacy plan rather than omit allocations from group totals.
-            missing = connection.exec_driver_sql('''SELECT COUNT(*) FROM advertisement a
-                WHERE NOT EXISTS (SELECT 1 FROM outlet_target t
-                    WHERE t.period_id = a.period_id AND t.outlet_id = a.outlet_id)''').scalar_one()
-            if missing:
-                raise click.ClickException('Historical advertisements lack period categories; repair the legacy plan before migration.')
-            connection.exec_driver_sql("ALTER TABLE outlet ADD COLUMN category VARCHAR(20) "
-                                       "CHECK (category IN ('local_one','local_two','national'))")
-            connection.exec_driver_sql('''UPDATE outlet SET category = (
-                SELECT t.category FROM outlet_target t JOIN period p ON p.id = t.period_id
-                WHERE t.outlet_id = outlet.id ORDER BY p.year DESC, p.half DESC LIMIT 1)''')
-            connection.exec_driver_sql('''INSERT INTO outlet_target (period_id, outlet_id, category, share_bp)
-                SELECT p.id, o.id, o.category, 0 FROM period p CROSS JOIN outlet o
-                WHERE o.active = 1 AND o.category IS NOT NULL AND NOT EXISTS (
-                    SELECT 1 FROM outlet_target t WHERE t.period_id = p.id AND t.outlet_id = o.id)''')
-            connection.exec_driver_sql('UPDATE period SET revision = revision + 1')
-            db.session.add(SchemaVersion(version=2))
-            db.session.commit()
-        except Exception:
-            db.session.rollback()
-            raise
+        db.session.rollback()
+        # SQLite requires foreign keys disabled outside the transaction to rebuild
+        # a referenced table. Validate every reference before committing and always
+        # restore enforcement, including when any migration statement fails.
+        with db.engine.connect() as connection:
+            connection.exec_driver_sql('PRAGMA foreign_keys=OFF')
+            try:
+                connection.exec_driver_sql('BEGIN IMMEDIATE')
+                missing = connection.exec_driver_sql('''SELECT COUNT(*) FROM advertisement a
+                    WHERE NOT EXISTS (SELECT 1 FROM outlet_target t
+                        WHERE t.period_id = a.period_id AND t.outlet_id = a.outlet_id)''').scalar_one()
+                if missing:
+                    raise click.ClickException('Historical advertisements lack period categories; repair the legacy plan before migration.')
+                if versions != [1, 2, 3, 4]:
+                    if versions != [1, 2, 3]:
+                        _upgrade_media_categories(connection, versions)
+                    _upgrade_yearly_periods(connection)
+                    connection.exec_driver_sql('INSERT INTO schema_version (version, applied_at) VALUES (4, CURRENT_TIMESTAMP)')
+                _upgrade_optional_volume(connection)
+                connection.exec_driver_sql('INSERT INTO schema_version (version, applied_at) VALUES (5, CURRENT_TIMESTAMP)')
+                if connection.exec_driver_sql('PRAGMA foreign_key_check').all():
+                    raise click.ClickException('Foreign key validation failed; no changes made.')
+                connection.commit()
+            except Exception:
+                connection.rollback()
+                raise
+            finally:
+                connection.exec_driver_sql('PRAGMA foreign_keys=ON')
+        db.session.expire_all()
         pending = Outlet.query.filter(Outlet.category.is_(None)).count()
-        return f'Upgraded to schema version 2. Media awaiting type selection: {pending}.'
+        return f'Upgraded to schema version 5. Advertisement volume is optional; annual 50% local / 50% national targets are unchanged. Media awaiting type selection: {pending}.'
     db.create_all()
-    db.session.add(SchemaVersion(version=1))
-    db.session.add(SchemaVersion(version=2))
-    for key in ('local_one', 'local_two'):
-        db.session.add(Setting(key='label_' + key, value=CATEGORY_LABELS[key]))
+    for version in (1, 2, 3, 4, 5):
+        db.session.add(SchemaVersion(version=version))
     for name in ('مناقصه', 'مزایده', 'ثبت شرکت', 'ابلاغیه قضایی', 'اطلاعیه'):
         db.session.add(Subject(name=name, active=True))
     db.session.commit()
     with db.engine.connect() as connection:
         connection.exec_driver_sql('PRAGMA journal_mode=WAL')
-    return 'Initialized schema version 2. Create your personal administrator with create-admin.'
+    return 'Initialized schema version 5. Create your personal administrator with create-admin.'
+
+
+def _upgrade_optional_volume(connection):
+    table = Advertisement.__table__
+    ddl = str(CreateTable(table).compile(db.engine))
+    ddl = ddl.replace('CREATE TABLE advertisement (', 'CREATE TABLE advertisement_optional (', 1)
+    connection.exec_driver_sql(ddl)
+    quote = db.engine.dialect.identifier_preparer.quote
+    columns = ', '.join(quote(column.name) for column in table.columns)
+    connection.exec_driver_sql(f'INSERT INTO advertisement_optional ({columns}) SELECT {columns} FROM advertisement')
+    connection.exec_driver_sql('DROP TABLE advertisement')
+    connection.exec_driver_sql('ALTER TABLE advertisement_optional RENAME TO advertisement')
+    for index in table.indexes:
+        connection.execute(CreateIndex(index))
+
+
+def _upgrade_media_categories(connection, versions):
+    if versions == [1]:
+        connection.exec_driver_sql("ALTER TABLE outlet ADD COLUMN category VARCHAR(20) "
+                                   "CHECK (category IN ('local_one','local_two','national'))")
+        connection.exec_driver_sql('''UPDATE outlet SET category = (
+            SELECT t.category FROM outlet_target t JOIN period p ON p.id = t.period_id
+            WHERE t.outlet_id = outlet.id ORDER BY p.year DESC, p.half DESC LIMIT 1)''')
+        connection.exec_driver_sql('''INSERT INTO outlet_target (period_id, outlet_id, category, share_bp)
+            SELECT p.id, o.id, o.category, 0 FROM period p CROSS JOIN outlet o
+            WHERE o.active = 1 AND o.category IS NOT NULL AND NOT EXISTS (
+                SELECT 1 FROM outlet_target t WHERE t.period_id = p.id AND t.outlet_id = o.id)''')
+        connection.exec_driver_sql('INSERT INTO schema_version (version, applied_at) VALUES (2, CURRENT_TIMESTAMP)')
+    connection.exec_driver_sql('''CREATE TABLE outlet_merged (
+        id INTEGER NOT NULL PRIMARY KEY, name VARCHAR(150) NOT NULL UNIQUE,
+        active BOOLEAN NOT NULL, category VARCHAR(20),
+        CHECK (category IN ('local','national')))''')
+    connection.exec_driver_sql('''INSERT INTO outlet_merged SELECT id, name, active,
+        CASE WHEN category IN ('local_one','local_two') THEN 'local' ELSE category END FROM outlet''')
+    connection.exec_driver_sql('''CREATE TABLE outlet_target_merged (
+        id INTEGER NOT NULL PRIMARY KEY, period_id INTEGER NOT NULL REFERENCES period(id),
+        outlet_id INTEGER NOT NULL REFERENCES outlet(id), category VARCHAR(20) NOT NULL,
+        share_bp INTEGER NOT NULL, UNIQUE (period_id, outlet_id),
+        CHECK (category IN ('local','national')), CHECK (share_bp BETWEEN 0 AND 10000))''')
+    connection.exec_driver_sql('''INSERT INTO outlet_target_merged SELECT id, period_id, outlet_id,
+        CASE WHEN category IN ('local_one','local_two') THEN 'local' ELSE category END,
+        share_bp FROM outlet_target''')
+    connection.exec_driver_sql('DROP TABLE outlet_target')
+    connection.exec_driver_sql('DROP TABLE outlet')
+    connection.exec_driver_sql('ALTER TABLE outlet_merged RENAME TO outlet')
+    connection.exec_driver_sql('ALTER TABLE outlet_target_merged RENAME TO outlet_target')
+    connection.exec_driver_sql('CREATE INDEX ix_outlet_target_period_id ON outlet_target (period_id)')
+    connection.exec_driver_sql("DELETE FROM setting WHERE key IN ('label_local_one','label_local_two')")
+    connection.exec_driver_sql('INSERT INTO schema_version (version, applied_at) VALUES (3, CURRENT_TIMESTAMP)')
+
+
+def _upgrade_yearly_periods(connection):
+    periods = [dict(row) for row in connection.exec_driver_sql(
+        'SELECT * FROM period ORDER BY year, half, id').mappings()]
+    targets = [dict(row) for row in connection.exec_driver_sql(
+        'SELECT * FROM outlet_target ORDER BY id').mappings()]
+    used = {tuple(row) for row in connection.exec_driver_sql(
+        'SELECT DISTINCT period_id, outlet_id FROM advertisement')}
+    volumes = {tuple(row[:2]): row[2] for row in connection.exec_driver_sql(
+        'SELECT period_id, outlet_id, SUM(volume_units) FROM advertisement WHERE voided_at IS NULL GROUP BY period_id, outlet_id')}
+    connection.exec_driver_sql('''CREATE TABLE period_yearly (
+        id INTEGER NOT NULL PRIMARY KEY, year INTEGER NOT NULL UNIQUE,
+        active BOOLEAN NOT NULL, recovery BOOLEAN NOT NULL, revision INTEGER NOT NULL,
+        CHECK (year BETWEEN 1200 AND 1600))''')
+    connection.exec_driver_sql('''CREATE TABLE outlet_target_yearly (
+        id INTEGER NOT NULL PRIMARY KEY, period_id INTEGER NOT NULL REFERENCES period(id),
+        outlet_id INTEGER NOT NULL REFERENCES outlet(id), category VARCHAR(20) NOT NULL,
+        share_bp INTEGER NOT NULL, UNIQUE (period_id, outlet_id),
+        CHECK (category IN ('local','national')), CHECK (share_bp BETWEEN 0 AND 10000))''')
+    mapping = {}
+    for year in sorted({period['year'] for period in periods}):
+        halves = [period for period in periods if period['year'] == year]
+        retained_id = min(period['id'] for period in halves)
+        order = {period['id']: index for index, period in enumerate(halves)}
+        members = [target for target in targets if target['period_id'] in order]
+        local, total = 0, 0
+        for outlet_id in sorted({target['outlet_id'] for target in members}):
+            entries = sorted((target for target in members if target['outlet_id'] == outlet_id),
+                             key=lambda target: order[target['period_id']])
+            historical = [target for target in entries if (target['period_id'], outlet_id) in used]
+            if len({target['category'] for target in historical}) > 1:
+                raise click.ClickException(
+                    f'Cannot merge year {year}: media {outlet_id} has recorded allocations in both local and national categories. '
+                    'Resolve this historical classification conflict before retrying; no changes made.')
+            chosen = (historical or entries)[-1]
+            amount = sum(volumes.get((target['period_id'], outlet_id), 0) for target in entries)
+            total += amount
+            if chosen['category'] == 'local':
+                local += amount
+            connection.exec_driver_sql(
+                'INSERT INTO outlet_target_yearly (id,period_id,outlet_id,category,share_bp) VALUES (?,?,?,?,?)',
+                (min(target['id'] for target in entries), retained_id, outlet_id, chosen['category'], chosen['share_bp']))
+        recovery = 5 * local > 3 * total or (2 * local > total and any(period['recovery'] for period in halves))
+        connection.exec_driver_sql(
+            'INSERT INTO period_yearly (id,year,active,recovery,revision) VALUES (?,?,?,?,?)',
+            (retained_id, year, any(period['active'] for period in halves), recovery,
+             max(period['revision'] for period in halves) + 1))
+        for period in halves:
+            mapping[str(period['id'])] = retained_id
+            connection.exec_driver_sql('UPDATE advertisement SET period_id = ? WHERE period_id = ?',
+                                       (retained_id, period['id']))
+    connection.exec_driver_sql('DROP TABLE outlet_target')
+    connection.exec_driver_sql('DROP TABLE period')
+    connection.exec_driver_sql('ALTER TABLE period_yearly RENAME TO period')
+    connection.exec_driver_sql('ALTER TABLE outlet_target_yearly RENAME TO outlet_target')
+    connection.exec_driver_sql('CREATE INDEX ix_outlet_target_period_id ON outlet_target (period_id)')
+    connection.exec_driver_sql(
+        'INSERT INTO audit_event (action,target,detail,created_at) VALUES (?,?,?,CURRENT_TIMESTAMP)',
+        ('periods_yearly_migration', 'periods', json.dumps(
+            {'period_mapping': mapping, 'previous_periods': periods, 'previous_memberships': targets}, ensure_ascii=False)))
 
 
 def backup(destination):
@@ -102,12 +215,12 @@ def seed_demo():
     admin = User.query.filter_by(role='admin', active=True).first()
     if not admin:
         raise click.ClickException('Create an administrator first with create-admin.')
-    year, half = period_key()
-    period = Period(year=year, half=half, active=True)
+    year = period_key()
+    period = Period(year=year, active=True)
     db.session.add(period)
     db.session.flush()
-    specs = [('صبح امروز', 'local_one'), ('شهرآرا', 'local_one'),
-             ('پیام خراسان', 'local_two'), ('نسیم خراسان', 'local_two'),
+    specs = [('صبح امروز', 'local'), ('شهرآرا', 'local'),
+             ('پیام خراسان', 'local'), ('نسیم خراسان', 'local'),
              ('خراسان', 'national'), ('اطلاعات', 'national')]
     outlets = []
     for name, category in specs:
@@ -121,7 +234,7 @@ def seed_demo():
     db.session.add_all(organizations)
     db.session.flush()
     subject = Subject.query.filter_by(name='مناقصه').first()
-    start, _ = period_bounds(year, half)
+    start, _ = period_bounds(year)
     volumes = [(0, 10), (0, 180), (0, 50), (1, 60), (2, 120), (3, 180), (4, 300), (5, 100)]
     for index, (outlet_index, volume) in enumerate(volumes):
         allocated = max(start, today() - timedelta(days=7 - index))
@@ -215,4 +328,4 @@ def register_commands(app):
     def demo_data():
         """Explicitly seed a fresh instance with illustrative 1,000-box allocations."""
         seed_demo()
-        click.echo('Created demonstration data. Group targets are 25% / 25% / 50%; media types are editable.')
+        click.echo('Created demonstration data. Group targets are 50% local / 50% national; media types are editable.')

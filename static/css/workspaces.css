@@ -2,21 +2,21 @@
 .with-sidebar { --sidebar-width:250px; --app-header-height:80px; }
 .site-header { min-height:var(--app-header-height); }
 .side-navigation .sidebar-heading { justify-content:flex-start; height:var(--app-header-height); min-height:var(--app-header-height); flex-shrink:0; padding:12px 18px; }
-.sidebar-brand { display:flex; align-items:center; justify-content:center; max-width:100%; padding:4px 8px; border-radius:6px; }
-.sidebar-brand img { display:block; width:120px; height:auto; max-width:100%; object-fit:contain; }
-[data-theme="dark"] .sidebar-brand { background:#fff; }
+.sidebar-brand { display:flex; align-items:center; min-width:0; width:128px; height:44px; max-width:100%; color:var(--ink); }
+.sidebar-wordmark { display:flex; flex-direction:column; gap:1px; text-align:start; white-space:nowrap; }
+.sidebar-wordmark-prefix { color:var(--muted); font-size:11px; font-weight:500; line-height:1.6; }
+.sidebar-wordmark-title { color:var(--ink); font-size:17px; font-weight:700; line-height:1.6; }
 .sidebar-toggle { display:none; align-items:center; justify-content:center; flex:0 0 36px; width:36px; height:36px; min-height:36px; padding:8px; margin-inline-start:auto; border-radius:8px; }
 .nav-ready .sidebar-toggle { display:inline-flex; }
 .side-navigation button.sidebar-toggle { background:var(--light); color:var(--muted); }
 .sidebar-toggle svg { width:20px; height:20px; flex-shrink:0; transition:transform var(--motion-duration) ease; }
 .empty-icon .ui-icon { display:block; width:40px; height:40px; margin-inline:auto; }
-.sidebar-links { padding:12px 10px; gap:18px; scrollbar-width:thin; }
+.sidebar-links { padding:12px 10px; gap:8px; scrollbar-width:thin; }
 .nav-group { display:flex; flex-direction:column; gap:4px; }
-.nav-group + .nav-group { border-top:1px solid var(--line); padding-top:12px; }
-.nav-section { margin:6px 12px 8px; font-size:11px; font-weight:700; color:var(--muted); }
+.nav-group + .nav-group { padding-top:0; }
+.nav-section { margin:6px 12px 8px; font-size:14px; font-weight:700; color:var(--muted); }
 .side-link { position:relative; min-height:42px; border-radius:8px; padding:9px 12px; color:var(--secondary-ink); font-size:13px; }
 .side-link svg { width:19px; height:19px; flex-basis:19px; }
-.side-link.is-active::before { content:""; position:absolute; inset-inline-start:0; top:12px; bottom:12px; width:3px; border-radius:3px; background:var(--primary); }
 .page-heading h1 { font-size:27px; }
 .page-heading p { font-size:12px; max-width:650px; }
 .page-back { margin-bottom:14px; }
@@ -26,6 +26,11 @@
 .section-kicker { display:block; margin-bottom:3px; font-size:10px; color:var(--muted); }
 .period-card { padding:20px 22px; }
 .period-card strong { font-size:14px; }
+/* Media target status uses the shared light and dark theme colors. */
+.card.media-target-card.success { background:var(--success-bg); color:var(--success-ink); border-color:var(--success-ink); }
+.card.media-target-card.warning { background:var(--warning-bg); color:var(--warning-ink); border-color:var(--warning-ink); }
+.media-target-card .muted { color:inherit; }
+
 .period-controls { gap:10px; }
 .period-controls input { width:86px; }
 .report-exports { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
@@ -123,8 +128,7 @@ summary:has(.accordion-meta)::after { margin-inline-start:2px; }
     .sidebar-collapsed .sidebar-brand { display:none; }
     .sidebar-collapsed .sidebar-toggle { margin-inline:auto; }
     .sidebar-collapsed .sidebar-toggle svg { transform:rotate(180deg); }
-    .sidebar-collapsed .nav-group + .nav-group { padding-top:12px; margin-top:0; }
-    .sidebar-collapsed .side-link.is-active::before { inset-inline-start:0; }
+    .sidebar-collapsed .nav-group + .nav-group { padding-top:0; margin-top:0; }
 }
 @media (max-width:1100px) {
     .report-date-fields { grid-template-columns:repeat(2,minmax(0,1fr)); }
@@ -141,9 +145,9 @@ summary:has(.accordion-meta)::after { margin-inline-start:2px; }
     .confirmation-actions button { flex:1; min-width:0; }
     .page-heading h1 { font-size:23px; }
     .period-card, .report-filters, .report-results { padding:16px; }
-    .period-controls { width:100%; display:grid; grid-template-columns:78px minmax(0,1fr); gap:10px; }
+    .period-controls { width:100%; display:grid; grid-template-columns:minmax(90px,1fr) auto; gap:10px; }
     .period-controls input, .period-controls select { min-width:0; width:100%; }
-    .period-controls > button { grid-column:1/-1; }
+    .period-controls > button { align-self:end; }
     .report-date-fields, .report-basic-fields, .filter-group .fields { grid-template-columns:minmax(0,1fr); gap:12px; }
     .report-filters .section-heading { margin-bottom:14px; }
     summary { padding:15px; gap:8px; }

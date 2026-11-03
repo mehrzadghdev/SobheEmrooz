@@ -3,9 +3,10 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import jdatetime
+from sqlalchemy import func
 from .constants import AD_TYPES, COLUMNS, DATE_FIELDS, DEFAULT_COLUMNS, PRINT_STATUSES, PROVINCES
-from .models import Advertisement
-from .services import boxes, integer, jalali, parse_date, period_bounds, text
+from .models import Advertisement, OutletTarget, db
+from .services import boxes, category_labels, integer, jalali, parse_date, period_bounds, text
 
 
 def selected_columns(args):
@@ -15,8 +16,8 @@ def selected_columns(args):
     return [key for key in COLUMNS if key in values]
 
 
-def filtered_query(args, year, half):
-    start_default, end_default = period_bounds(year, half)
+def filtered_query(args, year, *, apply_dates=True):
+    start_default, end_default = period_bounds(year)
     start = parse_date(args.get('start') or start_default.isoformat())
     end = parse_date(args.get('end') or (end_default - timedelta(days=1)).isoformat())
     if start > end:
@@ -33,13 +34,14 @@ def filtered_query(args, year, half):
         raise ValueError('نوع تاریخ گزارش معتبر نیست.')
     column = getattr(Advertisement, field)
     query = Advertisement.query.filter(Advertisement.voided_at.is_(None))
-    if field == 'created_at':
-        zone = ZoneInfo('Asia/Tehran')
-        lower = datetime.combine(start, datetime.min.time(), zone).astimezone(ZoneInfo('UTC')).replace(tzinfo=None)
-        upper = datetime.combine(end + timedelta(days=1), datetime.min.time(), zone).astimezone(ZoneInfo('UTC')).replace(tzinfo=None)
-        query = query.filter(column >= lower, column < upper)
-    else:
-        query = query.filter(column >= start, column <= end)
+    if apply_dates or args.get('start') or args.get('end'):
+        if field == 'created_at':
+            zone = ZoneInfo('Asia/Tehran')
+            lower = datetime.combine(start, datetime.min.time(), zone).astimezone(ZoneInfo('UTC')).replace(tzinfo=None)
+            upper = datetime.combine(end + timedelta(days=1), datetime.min.time(), zone).astimezone(ZoneInfo('UTC')).replace(tzinfo=None)
+            query = query.filter(column >= lower, column < upper)
+        else:
+            query = query.filter(column >= start, column <= end)
     for field_name, minimum_key, maximum_key in (
         ('id', 'id_min', 'id_max'), ('ma_reference', 'ma_min', 'ma_max'),
         ('amount', 'amount_min', 'amount_max'), ('approved_amount', 'approved_amount_min', 'approved_amount_max')):
@@ -89,3 +91,33 @@ def cell(ad, key):
     if key.endswith('_units'):
         return boxes(value) if value is not None else '—'
     return value if value not in (None, '') else '—'
+
+
+PERSIAN_MONTHS = ('فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور',
+                  'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند')
+
+
+def allocation_charts(state, year):
+    """Annual allocation charts use recorded period categories and nonvoid volume."""
+    months = [{'name': name, 'local': 0, 'national': 0} for name in PERSIAN_MONTHS]
+    if state['period']:
+        daily = db.session.query(Advertisement.allocation_date, OutletTarget.category,
+                                 func.sum(Advertisement.volume_units)).join(OutletTarget,
+            (OutletTarget.period_id == Advertisement.period_id)
+            & (OutletTarget.outlet_id == Advertisement.outlet_id)).filter(
+                Advertisement.period_id == state['period'].id, Advertisement.voided_at.is_(None)
+            ).group_by(Advertisement.allocation_date, OutletTarget.category)
+        for allocated, category, volume in daily:
+            month = jdatetime.date.fromgregorian(date=allocated).month
+            months[month - 1][category] += int(volume or 0)
+    labels = category_labels()
+    groups = []
+    for key, group in state['groups'].items():
+        media = [{'id': row['outlet_id'], 'name': row['name'], 'units': row['allocated_units'],
+                  'allocated': row['allocated'], 'percent': row['category_percent']}
+                 for row in state['rows'] if row['category'] == key]
+        media.sort(key=lambda row: (-row['units'], row['id']))
+        groups.append({'key': key, 'label': labels[key], 'units': group['allocated_units'],
+                       'allocated': group['allocated'], 'percent': group['actual_percent'], 'media': media})
+    return {'year': year, 'total': state['total'], 'total_units': state['total_units'],
+            'groups': groups, 'months': months}

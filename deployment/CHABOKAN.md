@@ -105,6 +105,37 @@ chabok service logs --service sobhe-emrooz
 
 ## Later deployments
 
+### Import the 1405 workbook in production
+
+Deploy the code containing `import-1405` and upload `آگهی 1405.xlsx` to the
+deployed application directory (the current `.chabokignore` includes this file
+in deployment uploads). In the **host console**, from the directory containing
+`app.py`, use the production environment and an existing administrator username:
+
+```sh
+export SOBHE_DATA_DIR=/data
+python -m flask --app app migrate
+python -m flask --app app import-1405 'آگهی 1405.xlsx' --username admin
+```
+
+Check the dry run: 300 ads, 66 new media and 29 new organizations on an empty
+instance, 1,572 boxes, and 40,676,000,000 rials. Existing matching catalog
+entries reduce the new catalog counts. Then apply:
+
+```sh
+python -m flask --app app import-1405 'آگهی 1405.xlsx' --username admin --apply
+```
+
+Use the host's actual administrator username if it differs from `admin`.
+Leave `SOBHE_DATABASE_URL` unset as described above, or ensure its configured
+SQLite URL targets the intended production database. The command automatically
+backs up the database and attachments to `/data/backups/before-import-1405-*.zip`
+before writing. Download that backup through the host file manager. An identical
+repeat skips records; an existing 1405 history or changed source is refused.
+Check `/admin/advertisements` and the 1405 dashboard after import. Public reports
+must use allocation date because the source has no approval dates. This is a
+console command; deploying code alone never imports records.
+
 Keep the existing permanent path and session secret. Before replacing a running
 version, create a backup in the host console and download it with the file manager:
 

@@ -4,7 +4,7 @@
 {% endmacro %}
 <nav class="side-navigation" id="side-navigation" aria-label="فهرست اصلی">
   <div class="sidebar-heading">
-    <a class="sidebar-brand" href="{{ url_for('web.dashboard') }}"><img src="{{ url_for('static', filename='logo.png') }}" alt="صبح امروز" width="200" height="68"></a>
+    <a class="sidebar-brand" href="{{ url_for('web.dashboard') }}" aria-label="سامانه جامع توزیع آگهی"><span class="sidebar-wordmark"><span class="sidebar-wordmark-prefix">سامانه جامع</span><strong class="sidebar-wordmark-title">توزیع آگهی</strong></span></a>
     <button type="button" class="sidebar-toggle secondary" id="sidebar-toggle" aria-label="بستن فهرست" title="بستن فهرست" aria-controls="side-navigation" aria-expanded="false">{{ icon('arrow-right') }}</button>
   </div>
   <div class="sidebar-links">

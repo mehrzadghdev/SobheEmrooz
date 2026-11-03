@@ -11,18 +11,23 @@
   <link rel="manifest" href="{{ url_for('pwa.manifest') }}">
   <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
   <title>{% block title %}سامانه آگهی‌های دولتی{% endblock %}</title>
-  <link rel="icon" href="{{ url_for('static', filename='logo.png') }}" type="image/png">
+  <link rel="icon" href="{{ url_for('static', filename='icon.svg') }}" type="image/svg+xml">
   <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/fonts.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/workspaces.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/report-charts.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/pwa.css') }}">
+  <script src="{{ url_for('static', filename='js/button-loading.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/pwa.js') }}" data-worker-url="{{ url_for('pwa.service_worker') }}" data-scope="{{ url_for('web.dashboard') }}" defer></script>
   <script src="{{ url_for('static', filename='js/jalali-date.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/jalali-picker.js') }}" defer></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/tables.css') }}">
   <script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/tables.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/allocation.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/report-charts.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/page-navigation.js') }}" defer></script>
   {% block scripts %}{% endblock %}
 </head>

@@ -10,20 +10,27 @@ from werkzeug.utils import secure_filename
 from .allocations import find_period
 from .constants import AD_TYPES, PRINT_STATUSES, PROVINCES, TEXT_FIELDS
 from .models import Advertisement, Organization, Subject, db
-from .services import integer, parse_date, text, units
+from .services import integer, parse_date, text, today, units
+
+
+def allocation_date_value(data, existing=None):
+    default = existing.allocation_date if existing else today()
+    return parse_date(data.get('allocation_date') or default.isoformat())
 
 
 def values(data, existing=None):
+    if not text(data.get('volume')):
+        raise ValueError('حجم کادر الزامی است.')
     result = {'ma_reference': integer(data.get('ma_reference'), 1),
               'organization_id': integer(data.get('organization_id'), 1),
               'outlet_id': integer(data.get('outlet_id'), 1),
-              'allocation_date': parse_date(data.get('allocation_date')),
+              'allocation_date': allocation_date_value(data, existing),
               'volume_units': units(data.get('volume'), positive=True)}
     duplicate = Advertisement.query.filter_by(ma_reference=result['ma_reference'])
     if existing:
         duplicate = duplicate.filter(Advertisement.id != existing.id)
     if duplicate.first():
-        raise ValueError('شماره م/الف قبلاً ثبت شده است؛ برای هر آگهی شماره یکتا وارد کنید.')
+        raise ValueError('شناسه آگهی قبلاً ثبت شده است؛ برای هر آگهی شناسه یکتا وارد کنید.')
     organization = db.session.get(Organization, result['organization_id'])
     if not organization or (not organization.active and (not existing or existing.organization_id != organization.id)):
         raise ValueError('سازمان آگهی‌دهنده فعال انتخاب کنید.')
@@ -59,7 +66,7 @@ def form_values(ad=None):
     if not ad:
         return {'allocation_date': today().isoformat(), 'print_status': 'منتظر چاپ'}
     result = {column.name: getattr(ad, column.name) for column in ad.__table__.columns}
-    result.update(volume=boxes(ad.volume_units),
+    result.update(volume=boxes(ad.volume_units) if ad.volume_units is not None else '',
                   headline_volume=boxes(ad.headline_units) if ad.headline_units is not None else '',
                   approved_volume=boxes(ad.approved_units) if ad.approved_units is not None else '')
     for key, value in result.items():

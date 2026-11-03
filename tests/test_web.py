@@ -89,11 +89,11 @@ class AdvertisementTests(AppTestCase):
             self.assertEqual(response.status_code, 400)
 
     def test_admin_correction_moves_volume_between_periods(self):
-        other = self.make_period(1405, 1)
+        other = self.make_period(1404)
         ad = self.add_ad(0, 10)
         self.sign_in(admin=True)
         data = r.form_values(ad)
-        data.update(volume='20.25', allocation_date='2026-04-01', override_confirmed='1')
+        data.update(volume='20.25', allocation_date='2025-04-01', override_confirmed='1')
         response = self.submit(data, ad)
         self.assertEqual(response.status_code, 302)
         self.assertEqual(a.snapshot(self.period)['total'], '0')
@@ -147,7 +147,7 @@ class AccessTests(AppTestCase):
     def test_reports_and_details_are_public_but_writes_require_login(self):
         ad = self.add_ad(approval_date=datetime(2026,10,1).date())
         client = self.app.test_client()
-        for path in ('/', '/reports?year=1405&half=2', '/reports?view=media', f'/advertisements/{ad.id}'):
+        for path in ('/', '/reports?year=1405', '/reports?view=media', f'/advertisements/{ad.id}'):
             self.assertEqual(client.get(path).status_code, 200)
         self.assertEqual(client.post('/advertisements/new', data=self.data()).status_code, 302)
         self.assertEqual(client.get('/api/allocation-preview').status_code, 401)
@@ -203,7 +203,7 @@ class ReportTests(AppTestCase):
                     subject_description='مناقصه عمرانی', letter_number='ABC/12', ad_text='ساخت پل',
                     amount=5000, approved_amount=4000, ad_type='دولتی، سفارشی', print_status='چاپ شده')
         self.add_ad(ma_reference=1003, approval_date=datetime(2026,10,1).date(), organization_id=self.other_organization.id)
-        args = {'year':1405,'half':2,'ma_min':1002,'ma_max':1002,'organization_id':self.organization.id,
+        args = {'year':1405,'ma_min':1002,'ma_max':1002,'organization_id':self.organization.id,
                 'province':'خراسان رضوی','subject_description':'عمرانی','letter_number':'ABC',
                 'ad_text':'پل','amount_min':4500,'approved_amount_max':4500,'ad_type':'دولتی، سفارشی',
                 'print_status':'چاپ شده','columns':['ma_reference','ad_text']}
@@ -212,13 +212,13 @@ class ReportTests(AppTestCase):
         self.assertIn('ساخت پل', response.get_data(as_text=True))
         export = self.client.get('/reports', query_string={**args,'export':'xlsx'})
         book = load_workbook(io.BytesIO(export.data))
-        self.assertEqual(list(book.active.values), [('شماره م/الف','متن آگهی'),(1002,'ساخت پل')])
+        self.assertEqual(list(book.active.values), [('شناسه آگهی','متن آگهی'),(1002,'ساخت پل')])
 
     def test_approval_default_excludes_null_but_allocation_date_includes(self):
         self.add_ad(ma_reference=1002)
         client = self.app.test_client()
-        no_date = client.get('/reports?year=1405&half=2&export=xlsx')
-        with_date = client.get('/reports?year=1405&half=2&export=xlsx&date_field=allocation_date')
+        no_date = client.get('/reports?year=1405&export=xlsx')
+        with_date = client.get('/reports?year=1405&export=xlsx&date_field=allocation_date')
         self.assertEqual(load_workbook(io.BytesIO(no_date.data)).active.max_row, 1)
         self.assertEqual(load_workbook(io.BytesIO(with_date.data)).active.max_row, 2)
 
@@ -230,25 +230,25 @@ class ReportTests(AppTestCase):
 
     def test_group_targets_and_media_actuals_ignore_organization_filters(self):
         self.volumes([125,125,125,125,250,250])
-        response = self.client.get('/reports',query_string={'year':1405,'half':2,'view':'media',
+        response = self.client.get('/reports',query_string={'year':1405,'view':'media',
                                     'organization_id':self.other_organization.id,'export':'xlsx'})
         book = load_workbook(io.BytesIO(response.data))
         self.assertEqual(book.active.cell(2,3).value, '125')
-        self.assertEqual(book['گروه‌ها'].cell(2,5).value, '250')
+        self.assertEqual(book['گروه‌ها'].cell(2,5).value, '500')
         self.assertEqual(book.active.max_column, 5)
 
     def test_exports_escape_spreadsheet_formulas_and_html_is_escaped(self):
         self.organization.name = '=HYPERLINK("bad")'
         db.session.commit()
         self.add_ad(ad_text='<script>alert(1)</script>')
-        response = self.client.get('/reports?year=1405&half=2&date_field=allocation_date&export=xlsx&columns=organization')
+        response = self.client.get('/reports?year=1405&date_field=allocation_date&export=xlsx&columns=organization')
         value = load_workbook(io.BytesIO(response.data)).active.cell(2,1).value
         self.assertTrue(value.startswith("'="))
-        response = self.client.get('/reports?year=1405&half=2&date_field=allocation_date&columns=ad_text')
+        response = self.client.get('/reports?year=1405&date_field=allocation_date&columns=ad_text')
         self.assertNotIn('<script>alert(1)</script>', response.get_data(as_text=True))
 
     def test_created_at_filter_uses_tehran_calendar_day(self):
         self.add_ad(created_at=datetime(2026,9,30,21,0))
-        response = self.client.get('/reports', query_string={'year':1405,'half':2,'date_field':'created_at',
+        response = self.client.get('/reports', query_string={'year':1405,'date_field':'created_at',
                             'start':'2026-10-01','end':'2026-10-01','export':'xlsx'})
         self.assertEqual(load_workbook(io.BytesIO(response.data)).active.max_row, 2)

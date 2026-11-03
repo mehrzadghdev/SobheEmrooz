@@ -102,6 +102,8 @@ def create_app(config=None, *, instance_path=None):
     app.register_blueprint(bp)
     from .commands import register_commands
     register_commands(app)
+    from .workbook_import import register_import_command
+    register_import_command(app)
     app.jinja_env.filters.update(boxes=boxes, jalali=jalali, decimal=decimal_string,
                                  number=lambda value: f'{value:,}' if value is not None else '—')
 

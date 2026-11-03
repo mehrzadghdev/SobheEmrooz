@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 import jdatetime
 from flask import g
 from .constants import CATEGORY_LABELS
-from .models import AuditEvent, Setting, db
+from .models import AuditEvent, db
 
 DIGITS = str.maketrans('۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩', '01234567890123456789')
 MAX_NUMBER = 9_000_000_000_000_000
@@ -100,24 +100,21 @@ def jalali(value):
 
 def period_key(value=None):
     current = jdatetime.date.fromgregorian(date=value or today())
-    return current.year, 1 if current.month <= 6 else 2
+    return current.year
 
 
-def period_bounds(year, half):
-    start = jdatetime.date(year, 1 if half == 1 else 7, 1).togregorian()
-    end = jdatetime.date(year, 7, 1).togregorian() if half == 1 else jdatetime.date(year + 1, 1, 1).togregorian()
+def period_bounds(year):
+    start = jdatetime.date(year, 1, 1).togregorian()
+    end = jdatetime.date(year + 1, 1, 1).togregorian()
     return start, end
 
 
 def period_label(period):
-    return f'{period.year} · ' + ('فروردین تا شهریور' if period.half == 1 else 'مهر تا اسفند')
+    return f'{period.year} · فروردین تا اسفند'
 
 
 def category_labels():
-    values = dict(CATEGORY_LABELS)
-    for setting in Setting.query.filter(Setting.key.in_(['label_local_one', 'label_local_two'])):
-        values[setting.key.removeprefix('label_')] = setting.value
-    return values
+    return dict(CATEGORY_LABELS)
 
 
 def audit(action, target, detail=None):

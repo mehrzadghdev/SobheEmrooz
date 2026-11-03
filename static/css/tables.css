@@ -1,0 +1,15 @@
+.table-controls{display:flex;align-items:end;gap:12px;flex-wrap:wrap;margin:14px 0}
+.table-controls label{margin:0;min-width:120px;font-size:12px}
+.table-controls label:first-child{flex:1;max-width:440px}
+.table-controls input,.table-controls select{margin-top:5px;width:100%}
+th .table-sort{display:inline-flex;align-items:center;gap:8px;background:none;color:inherit;font:inherit;font-weight:500;text-align:start;text-decoration:none;border:0;padding:4px 0;min-height:32px;cursor:pointer;white-space:nowrap}
+th[aria-sort=ascending],th[aria-sort=descending]{color:var(--primary-ink)}
+th button.table-sort.secondary:not(:disabled):hover{background:transparent;color:var(--primary-ink)}
+.table-sort:focus-visible{outline:2px solid var(--primary);outline-offset:4px;border-radius:3px}
+.table-pagination{gap:8px;flex-wrap:wrap}
+.table-pagination button,.table-pagination .button{min-height:36px;padding:6px 12px}
+.table-pagination button:disabled{cursor:default;opacity:.4}
+.percentage-status.warning{color:var(--warning-ink)}
+.percentage-status.success{color:var(--success-ink)}
+@media(max-width:600px){.table-controls label:first-child{max-width:none;flex-basis:100%}.table-pagination{font-size:11px}.table-pagination button,.table-pagination .button{padding:5px 9px}.table-pagination [role=status]{order:5;flex-basis:100%;text-align:center}}
+@media print{th .table-sort{display:inline!important;color:inherit!important;background:transparent!important}table[data-enhanced] tbody>tr:not(.table-filtered-out):not(:has(.empty-cell)){display:table-row!important}.table-filtered-out{display:none!important}}

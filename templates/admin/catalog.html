@@ -4,14 +4,14 @@
 {% block content %}
 <div class="page-heading"><div><h1>{{ title }}</h1><p>موارد دارای سابقه آگهی بایگانی می‌شوند و در گزارش‌ها باقی می‌مانند.</p></div></div>
 <section class="card"><h2>افزودن مورد جدید</h2><form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><div class="fields"><div><label for="new-name">نام</label><input name="name" id="new-name" required maxlength="{{ 200 if kind == 'organizations' else 150 }}"></div><div class="check-action"><label><input type="checkbox" name="active" value="1" checked> فعال</label><button>افزودن</button></div></div></form></section>
-<section class="card"><h2>فهرست {{ title }}</h2>
+<section class="card"><h2>فهرست {{ title }}</h2><div class="table-wrap"><table><thead><tr><th>نام و وضعیت</th><th class="actions-column">عملیات</th></tr></thead><tbody>
 {% for row in rows %}
   {% set used = row.id in used_ids %}
-  <div class="catalog-row" data-entity-id="{{ row.id }}">
+  <tr data-entity-id="{{ row.id }}"><td>
     <form method="post" class="catalog-edit-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ row.id }}"><label class="catalog-name" for="name-{{ row.id }}">نام<input id="name-{{ row.id }}" name="name" value="{{ row.name }}" required maxlength="{{ 200 if kind == 'organizations' else 150 }}"></label><label class="inline"><input type="checkbox" name="active" value="1" {{ 'checked' if row.active }}> فعال</label><button class="secondary">ذخیره</button></form>
-    <form method="post" action="{{ url_for('web.catalog_delete',kind=kind,row_id=row.id) }}" class="catalog-delete-form" data-confirm-title="{{ ('بایگانی ' if used else 'حذف ') ~ row.name }}" data-confirm-label="{{ 'بایگانی' if used else 'حذف' }}" data-confirm-variant="{{ 'warning' if used else 'danger' }}" data-confirm="{{ 'این مورد بایگانی و از انتخاب‌های جدید خارج شود؟ سوابق آگهی‌های آن حفظ می‌شوند.' if used else 'این مورد حذف شود؟' }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="icon-action secondary danger-action" title="{{ 'بایگانی با حفظ سوابق' if used else 'حذف' }}" aria-label="{{ 'بایگانی' if used else 'حذف' }} {{ row.name }}" {{ 'disabled' if used and not row.active }}>{{ icon('archive' if used else 'delete') }}</button></form>
-  </div>
-{% else %}<div class="empty-state"><p>هنوز موردی تعریف نشده است.</p></div>{% endfor %}
+    </td><td><form method="post" action="{{ url_for('web.catalog_delete',kind=kind,row_id=row.id) }}" class="catalog-delete-form" data-confirm-title="{{ ('بایگانی ' if used else 'حذف ') ~ row.name }}" data-confirm-label="{{ 'بایگانی' if used else 'حذف' }}" data-confirm-variant="{{ 'warning' if used else 'danger' }}" data-confirm="{{ 'این مورد بایگانی و از انتخاب‌های جدید خارج شود؟ سوابق آگهی‌های آن حفظ می‌شوند.' if used else 'این مورد حذف شود؟' }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="icon-action secondary danger-action" title="{{ 'بایگانی با حفظ سوابق' if used else 'حذف' }}" aria-label="{{ 'بایگانی' if used else 'حذف' }} {{ row.name }}" {{ 'disabled' if used and not row.active }}>{{ icon('archive' if used else 'delete') }}</button></form>
+  </td></tr>
+{% else %}<tr><td colspan="2" class="empty-cell">هنوز موردی تعریف نشده است.</td></tr>{% endfor %}</tbody></table></div>
 <p class="help-text">موارد بدون سابقه حذف می‌شوند. موارد دارای آگهی، حتی آگهی حذف‌شده، با حفظ سوابق بایگانی می‌شوند.</p>
 </section>
 {% endblock %}

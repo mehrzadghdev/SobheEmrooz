@@ -48,7 +48,7 @@ class OperationTests(AppTestCase):
         self.assertTrue(all(target.share_bp == 0 for target in self.period.targets))
 
     def test_period_activation_changes_only_selected_period(self):
-        previous = self.make_period(1405,1)
+        previous = self.make_period(1404)
         self.sign_in(admin=True)
         revision = self.period.revision
         self.client.post(f'/admin/periods/{self.period.id}', data={'revision':revision})
@@ -70,9 +70,9 @@ class OperationTests(AppTestCase):
         self.outlets[0].category = 'national'
         self.outlets[1].active = False
         db.session.commit()
-        response = self.client.post('/admin/periods',data={'year':'1406','half':'1'})
+        response = self.client.post('/admin/periods',data={'year':'1406',})
         self.assertEqual(response.status_code,302)
-        period = Period.query.filter_by(year=1406,half=1).one()
+        period = Period.query.filter_by(year=1406).one()
         self.assertFalse(period.active)
         self.assertEqual(len(period.targets),5)
         self.assertTrue(all(target.share_bp == 0 for target in period.targets))
@@ -150,12 +150,12 @@ class OperationTests(AppTestCase):
 
 class PersianDateTests(AppTestCase):
     def test_shahrivar_mehr_and_new_year_boundaries(self):
-        for value,expected in [('1405/06/31',(1405,1)),('1405/07/01',(1405,2)),
-                               ('1405/12/29',(1405,2)),('1406/01/01',(1406,1))]:
+        for value,expected in [('1405/01/01',1405),('1405/06/31',1405),('1405/07/01',1405),
+                               ('1405/12/29',1405),('1406/01/01',1406)]:
             self.assertEqual(period_key(parse_date(value)),expected)
 
     def test_esfand_leap_day_and_invalid_day(self):
-        self.assertEqual(period_key(parse_date('۱۴۰۳/۱۲/۳۰')),(1403,2))
+        self.assertEqual(period_key(parse_date('۱۴۰۳/۱۲/۳۰')),1403)
         with self.assertRaises(ValueError):
             parse_date('1404/12/30')
 

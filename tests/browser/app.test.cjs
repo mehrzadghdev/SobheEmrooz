@@ -30,6 +30,38 @@ async function login() {
     await page.locator('#password').fill('test-password-123');
     await Promise.all([page.waitForURL('/admin/advertisements'), page.locator('.auth form button').click()]);
 }
+
+test('table controls paginate, search all rows, sort numbers, and reinitialize after navigation', async () => {
+    await page.goto('/');
+    await page.evaluate(() => {
+        const section = document.createElement('section');
+        section.id = 'table-test';
+        const rows = Array.from({length: 32}, (_, index) => `<tr><td>رسانه ${index + 1}</td><td>${index + 1}</td></tr>`).join('');
+        section.innerHTML = `<div class="table-wrap"><table><thead><tr><th>رسانه</th><th>حجم</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+        document.querySelector('main').append(section);
+        document.dispatchEvent(new Event('sobhe:page-render'));
+        document.dispatchEvent(new Event('sobhe:page-render'));
+    });
+    const table = page.locator('#table-test');
+    await expect(table.locator('.table-controls')).toHaveCount(1);
+    await expect(table.locator('tbody tr:visible')).toHaveCount(15);
+    await table.getByRole('button', {name: 'بعدی', exact: true}).click();
+    await expect(table.locator('tbody tr:visible').first()).toContainText('رسانه 16');
+    await table.getByRole('button', {name: 'حجم'}).click();
+    await expect(table.locator('tbody tr:visible').first()).toContainText('رسانه 1');
+    await table.getByRole('button', {name: 'حجم'}).click();
+    await expect(table.locator('tbody tr:visible').first()).toContainText('رسانه 32');
+    await expect(table.locator('th').nth(1)).toHaveAttribute('aria-sort', 'descending');
+    await table.getByRole('searchbox').fill('رسانه ۲۷');
+    await expect(table.locator('tbody tr:visible')).toHaveCount(1);
+    await expect(table.locator('tbody tr:visible')).toContainText('رسانه 27');
+    await table.getByRole('searchbox').fill('missing');
+    await expect(table.locator('tbody tr:visible')).toHaveText('نتیجه‌ای پیدا نشد.');
+    await table.getByRole('searchbox').fill('');
+    await table.locator('select').selectOption('30');
+    await expect(table.locator('tbody tr:visible')).toHaveCount(30);
+    await capture('table-controls');
+});
 async function markShell() {
     await page.evaluate(() => {
         window.testShell = {
@@ -97,6 +129,8 @@ test('navigation keeps the shell, shows progress, and reinitializes filters and 
     await page.locator('.sidebar-links a[href="/reports"]').click();
     await expect(page.locator('#navigation-progress')).toBeVisible();
     await expect(page.locator('#main-content')).toHaveAttribute('aria-busy', 'true');
+    await expect(page.locator('.sidebar-links a[href="/reports"]')).not.toHaveClass(/is-loading/);
+    await expect(page.locator('.sidebar-links a[href="/reports"]')).not.toHaveAttribute('aria-busy','true');
     await expect.poll(() => typeof release).toBe('function');
     release();
     await page.waitForURL('/reports');
@@ -130,6 +164,7 @@ test('forms loaded through navigation retain allocation previews, review stale t
     await navigateByLink('.sidebar-links a[href="/admin/advertisements"]', '/admin/advertisements');
     await navigateByLink('a[href="/admin/advertisements/new"]', '/admin/advertisements/new');
     await expectShell();
+    await page.locator('[data-allocation-details] > summary').click();
     await page.locator('#ma_reference').fill('8101');
     await page.locator('#organization_id').selectOption({label: 'راه و شهرسازی'});
     await page.locator('#allocation_date').fill('۱۴۰۵/۰۷/۰۹');
@@ -185,7 +220,7 @@ test('history restores scroll and delegated dialogs and group targets survive na
     await expect(page.locator('#ad-delete-dialog')).toBeVisible();
     await page.locator('#ad-delete-dialog [data-dialog-close]').last().click();
     await expect(page.locator('#ad-delete-dialog')).not.toBeVisible();
-    await navigateByLink('a[href="/admin/advertisements/new"]', '/admin/advertisements/new');
+    await navigateByLink('.sidebar-links a[href="/reports"]', '/reports');
     await page.evaluate(() => window.scrollTo(0, 600));
     await page.waitForFunction(() => history.state?.sobheScroll?.[1] >= 590);
     const scroll = await page.evaluate(() => window.scrollY);
@@ -194,14 +229,14 @@ test('history restores scroll and delegated dialogs and group targets survive na
     await page.keyboard.press('Enter');
     await page.waitForURL('/admin/periods');
     await page.goBack();
-    await page.waitForURL('/admin/advertisements/new');
+    await page.waitForURL('/reports');
     await expect(page.locator('#main-content')).toHaveAttribute('aria-busy', 'false');
     await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(scroll);
     await page.goForward();
     await page.waitForURL('/admin/periods');
     await navigateByLink('a[href="/admin/periods/1"]', '/admin/periods/1');
     await expect(page.locator('[name^="share_"]')).toHaveCount(0);
-    await expect(page.locator('[data-group-target="local_one"]')).toHaveText('هدف 25٪');
+    await expect(page.locator('[data-group-target="local"]')).toHaveText('هدف 50٪');
     await expect(page.locator('[data-group-target="national"]')).toHaveText('هدف 50٪');
     await expectShell();
 });
@@ -259,6 +294,9 @@ test('reduced motion and the mobile drawer keep working during client navigation
     }));
     for (const value of bounds) assert.ok(value.left >= value.cardLeft && value.right <= value.cardRight, JSON.stringify(value));
     await expectShell();
+    const yearBounds = await page.locator('#period-year').boundingBox();
+    const buttonBounds = await page.locator('.period-controls button').boundingBox();
+    assert.ok(Math.abs(yearBounds.y - buttonBounds.y) < 2, 'Year control and submit button should share one row');
     await capture('mobile-reports');
 });
 
@@ -421,31 +459,23 @@ test('direct routes and GET and POST forms still work without JavaScript', async
         await native.locator('#new-name').press('Enter');
         await expect(native.locator('.catalog-name').last()).toBeVisible();
         await native.goto('/reports');
+        await expect(native.locator('[name="half"]')).toHaveCount(0);
         await native.locator('.period-controls button').click();
         await native.waitForURL(url => url.pathname === '/reports' && url.searchParams.has('year'));
     } finally { await nativeContext.close(); }
 });
 
-test('media type controls require local groups and periods use automatic memberships', async () => {
+test('media types use one local group and periods use automatic memberships', async () => {
     await login();
     await markShell();
     await navigateByLink('.sidebar-links a[href="/admin/catalog/outlets"]', '/admin/catalog/outlets');
     const names = ['رسانه محلی اول مرورگر', 'رسانه محلی دوم مرورگر', 'رسانه سراسری مرورگر'];
-    for (const [index, group] of ['local_one', 'local_two', 'national'].entries()) {
+    for (const [index, group] of ['local', 'local', 'national'].entries()) {
         await navigateByLink('a[href="/admin/media/new"]', '/admin/media/new');
         await expect(page.locator('#media-type')).toHaveValue('');
         await page.locator('#media-name').fill(names[index]);
         await page.locator('#media-type').selectOption(group === 'national' ? 'national' : 'local');
-        if (group === 'national') {
-            await expect(page.locator('#media-local-group')).toBeHidden();
-            await expect(page.locator('#media-local-group')).toBeDisabled();
-        } else {
-            await expect(page.locator('#media-local-group')).toBeVisible();
-            assert.equal(await page.locator('#media-local-group').evaluate(node => node.required), true);
-            await page.locator('[data-media-form] button[type="submit"], [data-media-form] button:not([type])').click();
-            await expect(page).toHaveURL(/\/admin\/media\/new$/);
-            await page.locator('#media-local-group').selectOption(group);
-        }
+        await expect(page.locator('#media-local-group')).toHaveCount(0);
         if (index === 0) await capture('media-type-local');
         await page.locator('[data-media-form] button[type="submit"], [data-media-form] button:not([type])').click();
         await page.waitForURL('/admin/catalog/outlets');
@@ -457,11 +487,12 @@ test('media type controls require local groups and periods use automatic members
     }
     await expectShell();
     await navigateByLink('.sidebar-links a[href="/admin/periods"]', '/admin/periods');
+    await expect(page.locator('#new-half')).toHaveCount(0);
     await page.locator('#new-year').fill('1407');
-    await page.locator('#new-half').selectOption('1');
     await page.getByRole('button', {name:'ایجاد دوره',exact:true}).click();
     await page.waitForURL(/\/admin\/periods\/\d+$/);
-    await expect(page.locator('[data-group-target]')).toHaveText(['هدف 25٪','هدف 25٪','هدف 50٪']);
+    await expect(page.locator('[data-group-target]')).toHaveText(['هدف 50٪','هدف 50٪']);
+    await expect(page.locator('h1')).toContainText('فروردین تا اسفند');
     await expect(page.locator('[name^="share_"], [name^="category_"], [name^="include_"]')).toHaveCount(0);
     await page.locator('[name="active"]').check();
     await page.getByRole('button', {name:'ذخیره وضعیت دوره',exact:true}).click();
@@ -484,15 +515,9 @@ test('media type validation also works without JavaScript', async () => {
         await native.goto('/admin/media/new');
         await native.locator('#media-name').fill('رسانه بدون جاوااسکریپت');
         await native.locator('#media-type').selectOption('local');
-        const rejected = native.waitForResponse(response => response.request().method() === 'POST' && response.url().endsWith('/admin/catalog/outlets'));
-        await native.locator('[data-media-form] button').click();
-        assert.equal((await rejected).status(),400);
-        await expect(native.locator('#media-name')).toHaveValue('رسانه بدون جاوااسکریپت');
-        await expect(native.locator('#media-type')).toHaveValue('local');
-        await native.locator('#media-local-group').selectOption('local_two');
         await native.locator('[data-media-form] button').click();
         await native.waitForURL('/admin/catalog/outlets');
-        await expect(native.locator('tbody tr').filter({hasText:'رسانه بدون جاوااسکریپت'})).toContainText('گروه دوم محلی');
+        await expect(native.locator('tbody tr').filter({hasText:'رسانه بدون جاوااسکریپت'})).toContainText('رسانه‌های محلی');
     } finally { await nativeContext.close(); }
 });
 
@@ -521,7 +546,6 @@ test('entity delete actions confirm removal and archive referenced organizations
 
     await navigateByLink('.sidebar-links a[href="/admin/periods"]', '/admin/periods');
     await page.locator('#new-year').fill('1406');
-    await page.locator('#new-half').selectOption('1');
     await page.getByRole('button', {name: 'ایجاد دوره', exact: true}).click();
     await page.waitForURL(/\/admin\/periods\/\d+$/);
     await navigateByLink('a[href="/admin/periods"]', '/admin/periods');
@@ -632,4 +656,216 @@ test('custom confirmations preserve validation and button values and cancel acro
     await expect(page.locator('#confirmation-dialog')).toBeHidden();
     await expect(deletion).toBeFocused();
     assert.equal(posts, 1);
+});
+
+test('public chart slices drill into media shares and survive navigation and empty years', async () => {
+    await page.goto('/reports?view=media&year=1405');
+    await markShell();
+    await expect(page.locator('[data-line-chart] svg')).toBeVisible();
+    const month = page.locator('[data-chart-month="0"]');
+    await month.hover();
+    await expect(page.locator('body > .chart-popover')).toBeVisible();
+    await expect(page.locator('body > .chart-popover')).toContainText('فروردین');
+    await page.locator('[data-chart-mode="bar"]').click();
+    await expect(page.locator('[data-line-chart]')).toHaveAttribute('data-mode','bar');
+    await expect(page.locator('[data-line-chart] .chart-bar')).toHaveCount(24);
+    await month.focus();
+    await expect(page.locator('body > .chart-popover')).toContainText('مجموع ماه');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('body > .chart-popover')).toBeHidden();
+    await page.locator('[data-chart-mode="line"]').click();
+    const local = page.locator('[data-chart-slice="local"]');
+    await local.focus();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('[data-chart-dialog]')).toBeVisible();
+    await expect(page.locator('#chart-detail-title')).toHaveText('سهم رسانه‌های محلی');
+    await expect(page.locator('[data-detail-legend] a').first()).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('[data-chart-dialog]')).toBeHidden();
+    await expect(local).toBeFocused();
+    await page.locator('[data-chart-category="national"]').click();
+    await expect(page.locator('#chart-detail-title')).toHaveText('سهم رسانه‌های سراسری');
+    await page.locator('[data-chart-close]').click();
+    await page.setViewportSize({width:390,height:844});
+    await page.locator('[data-chart-category="local"]').click();
+    await expect(page.locator('[data-detail-pie] svg')).toBeVisible();
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    await capture('public-chart-drilldown-mobile');
+    await navigateByLink('[data-detail-legend] a', /\/media\/\d+\?/);
+    await expect(page.locator('[data-chart-dialog][open]')).toHaveCount(0);
+    await page.goBack();
+    await page.waitForURL('/reports?view=media&year=1405');
+    await expect(page.locator('[data-summary-pie] svg')).toBeVisible();
+    await expectShell();
+    await page.locator('#period-year').fill('1408');
+    await page.locator('.period-controls button').click();
+    await page.waitForURL(url => url.searchParams.get('year') === '1408');
+    await expect(page.locator('[data-summary-pie]')).toHaveCount(0);
+    await page.locator('[data-chart-category="local"]').click();
+    await expect(page.locator('[data-detail-pie]')).toContainText('حجمی ثبت نشده');
+});
+
+test('admin ads are a plain list and the ad form requires identification, organization, media and volume', async () => {
+    await login();
+    await expect(page.locator('#report-filter-form, .period-controls, .filtered-stats')).toHaveCount(0);
+    await navigateByLink('a[href="/admin/advertisements/new"]','/admin/advertisements/new');
+    await expect(page.locator('#advertisement-form details[open]')).toHaveCount(0);
+    assert.deepEqual(await page.locator('#advertisement-form [required]').evaluateAll(nodes => nodes.map(node=>node.name).sort()),
+        ['ma_reference','organization_id','outlet_id','volume']);
+    await expect(page.locator('#allocation-preview')).toBeVisible();
+    await expect(page.locator('#allocation-preview').locator('xpath=ancestor::details')).toHaveCount(0);
+    await capture('minimal-ad-form');
+    await page.locator('#ma_reference').fill('9201');
+    await page.locator('#organization_id').selectOption({index:1});
+    await page.locator('#outlet_id').selectOption({index:1});
+    await page.locator('#volume').fill('2.5');
+    await expect(page.locator('#preview-token')).not.toHaveValue('');
+    if (await page.locator('#override-label').isVisible()) await page.locator('#override-confirmed').check();
+    await expect(page.locator('#save-ad')).toBeEnabled();
+    await page.locator('#save-ad').click();
+    await page.waitForURL(/\/admin\/advertisements\/\d+$/);
+    await expect(page.locator('h1')).toContainText('9201');
+    await expect(page.locator('.stat').first()).toContainText('2.5');
+    await navigateByLink('.sidebar-links a[href="/admin/advertisements"]','/admin/advertisements');
+    await expect(page.locator('tbody tr').filter({hasText:'9201'})).toHaveCount(1);
+    await capture('plain-admin-ads');
+});
+
+test('ad entry requires volume and saves reviewed allocation without JavaScript', async () => {
+    const nativeContext=await browser.newContext({baseURL,javaScriptEnabled:false});
+    try {
+        const native=await nativeContext.newPage();
+        await native.goto('/login');
+        await native.locator('#username').fill('administrator');
+        await native.locator('#password').fill('test-password-123');
+        await native.locator('.auth form button').click();
+        await native.waitForURL('/admin/advertisements');
+        await native.goto('/admin/advertisements/new');
+        await expect(native.locator('#advertisement-form details[open]')).toHaveCount(0);
+        await native.locator('#ma_reference').fill('9202');
+        await native.locator('#organization_id').selectOption({index:1});
+        await native.locator('#outlet_id').selectOption({index:1});
+        await native.locator('#save-ad').click();
+        await expect(native).toHaveURL(/\/advertisements\/new$/);
+        await native.locator('#volume').fill('2.5');
+        const review=native.waitForResponse(response=>response.request().method()==='POST' && response.url().endsWith('/advertisements/new'));
+        await native.locator('#save-ad').click();
+        assert.equal((await review).status(),409);
+        await expect(native.locator('#allocation-preview')).toBeVisible();
+        if (await native.locator('#override-label').isVisible()) await native.locator('#override-confirmed').check();
+        await native.locator('#save-ad').click();
+        await native.waitForURL(/\/admin\/advertisements\/\d+$/);
+        await expect(native.locator('h1')).toContainText('9202');
+    } finally {await nativeContext.close();}
+});
+
+test('loading buttons preserve native login and POST values, prevent repeats, and recover after failure', async () => {
+    await page.goto('/login');
+    await page.locator('#username').fill('administrator');
+    await page.locator('#password').fill('test-password-123');
+    await page.locator('.auth form button').evaluate(button=>{button.name='intent';button.value='login';});
+    let releaseLogin, loginBody;
+    await page.route('**/login',async route=>{
+        if(route.request().method()!=='POST') return route.continue();
+        loginBody=route.request().postData();
+        await new Promise(resolve=>{releaseLogin=resolve;});
+        await route.continue();
+    });
+    await page.locator('.auth form button').click({noWaitAfter:true});
+    await page.waitForFunction(()=>document.querySelector('.auth form button')?.getAttribute('aria-busy')==='true');
+    await expect.poll(()=>typeof releaseLogin).toBe('function');
+    assert.match(loginBody,/intent=login/);
+    releaseLogin();
+    await page.waitForURL('/admin/advertisements');
+    await expect(page.locator('.is-loading')).toHaveCount(0);
+    await navigateByLink('.sidebar-links a[href="/admin/catalog/subjects"]','/admin/catalog/subjects');
+    await page.locator('#new-name').fill('آزمایش حالت بارگذاری');
+    const submit=page.locator('.check-action button');
+    await submit.evaluate(button=>{button.name='intent';button.value='loading-test';});
+    let releasePost, posts=0, postBody;
+    await page.route('**/admin/catalog/subjects',async route=>{
+        if(route.request().method()!=='POST') return route.continue();
+        posts++;
+        postBody=route.request().postData();
+        if(posts===1) {
+            await new Promise(resolve=>{releasePost=resolve;});
+            return route.abort('failed');
+        }
+        return route.continue();
+    });
+    await submit.click();
+    await expect(submit).toHaveAttribute('aria-busy','true');
+    if(process.env.SOBHE_BROWSER_ARTIFACTS) {
+        fs.mkdirSync('outputs/browser',{recursive:true});
+        await page.screenshot({path:'outputs/browser/loading-save.png'});
+    }
+    await expect.poll(()=>typeof releasePost).toBe('function');
+    assert.match(postBody,/name="intent"\r\n\r\nloading-test/);
+    await submit.evaluate(button=>button.form.requestSubmit(button));
+    assert.equal(posts,1);
+    releasePost();
+    await expect(page.locator('[data-navigation-error]')).toBeVisible();
+    await expect(submit).not.toHaveClass(/is-loading/);
+    await expect(submit).not.toHaveAttribute('aria-disabled','true');
+    await expect(page.locator('#new-name')).toHaveValue('آزمایش حالت بارگذاری');
+    await submit.click();
+    await expect(page.locator('.catalog-name input').last()).toBeVisible();
+    await expect(page.locator('.alert.success')).toBeVisible();
+    assert.equal(posts,2);
+    await expect(page.locator('.is-loading')).toHaveCount(0);
+});
+
+test('export buttons load until the download completes and recover from a failed download', async () => {
+    await page.goto('/reports');
+    const exportButton=page.locator('a[href*="export=xlsx"]');
+    let release, fail=false;
+    await page.route('**/*export=xlsx*',async route=>{
+        await new Promise(resolve=>{release=resolve;});
+        if(fail) return route.abort('failed');
+        return route.continue();
+    });
+    const download=page.waitForEvent('download');
+    await exportButton.click();
+    await expect(exportButton).toHaveAttribute('aria-busy','true');
+    await expect.poll(()=>typeof release).toBe('function');
+    release();
+    assert.equal((await download).suggestedFilename(),'advertisement-report.xlsx');
+    await expect(exportButton).not.toHaveClass(/is-loading/);
+    fail=true;
+    release=null;
+    await exportButton.click();
+    await expect(exportButton).toHaveClass(/is-loading/);
+    await expect.poll(()=>typeof release).toBe('function');
+    release();
+    await expect(page.locator('[data-navigation-error]')).toBeVisible();
+    await expect(exportButton).not.toHaveAttribute('aria-disabled','true');
+    await expect(page).toHaveURL('/reports');
+});
+
+test('allocation preview controls show loading and recover when calculation fails', async () => {
+    await login();
+    await navigateByLink('a[href="/admin/advertisements/new"]','/admin/advertisements/new');
+    let release, fail=false;
+    await page.route('**/api/allocation-preview?*',async route=>{
+        await new Promise(resolve=>{release=resolve;});
+        if(fail) return route.abort('failed');
+        return route.continue();
+    });
+    await page.locator('#volume').fill('4');
+    await expect(page.locator('#save-ad')).toHaveClass(/is-loading/);
+    await expect.poll(()=>typeof release).toBe('function');
+    release();
+    await expect(page.locator('#preview-token')).not.toHaveValue('');
+    await expect(page.locator('#save-ad')).not.toHaveClass(/is-loading/);
+    release=null;
+    fail=true;
+    await page.locator('#use-recommendation').click();
+    await expect(page.locator('#use-recommendation')).toHaveAttribute('aria-busy','true');
+    await expect(page.locator('#save-ad')).toHaveClass(/is-loading/);
+    await expect.poll(()=>typeof release).toBe('function');
+    release();
+    await expect(page.locator('#allocation-preview')).toHaveAttribute('aria-busy','false');
+    await expect(page.locator('#save-ad')).toBeEnabled();
+    await expect(page.locator('#use-recommendation')).not.toHaveClass(/is-loading/);
+    await expect(page.locator('.is-loading')).toHaveCount(0);
 });

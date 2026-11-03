@@ -1,7 +1,7 @@
 <div class="table-wrap"><table class="media-share-table">
   <thead><tr><th>رسانه</th><th>گروه در این دوره</th><th>حجم دریافتی (کادر)</th><th>سهم واقعی از کل دوره</th><th>سهم واقعی در گروه</th></tr></thead>
   <tbody>{% for row in state.rows %}<tr>
-    <td><a href="{{ url_for('web.media_detail',outlet_id=row.outlet_id,year=selected.year,half=selected.half) }}"><strong>{{ row.name }}</strong></a>{% if not row.active %}<small class="muted block">غیرفعال</small>{% endif %}</td>
+    <td><a href="{{ url_for('web.media_detail',outlet_id=row.outlet_id,year=selected.year) }}"><strong>{{ row.name }}</strong></a>{% if not row.active %}<small class="muted block">غیرفعال</small>{% endif %}</td>
     <td>{{ category_labels[row.category] }}</td><td class="numeric">{{ row.allocated }}</td><td>{{ row.actual_percent }}٪</td><td>{{ row.category_percent }}٪</td>
   </tr>{% else %}<tr><td colspan="5" class="empty-cell">رسانه‌ای برای این دوره وجود ندارد.</td></tr>{% endfor %}</tbody>
 </table></div>

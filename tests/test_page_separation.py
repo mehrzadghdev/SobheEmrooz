@@ -16,10 +16,10 @@ class PageSeparationTests(AppTestCase):
         ad = self.add_ad(approval_date=date(2026, 10, 1))
         self.sign_in(admin=True)
         public = self.app.test_client()
-        paths = ('/?year=1405&half=2', '/reports?year=1405&half=2',
-                 '/reports?view=media&year=1405&half=2',
-                 '/reports?view=organizations&year=1405&half=2',
-                 f'/advertisements/{ad.id}', f'/media/{ad.outlet_id}?year=1405&half=2')
+        paths = ('/?year=1405', '/reports?year=1405',
+                 '/reports?view=media&year=1405',
+                 '/reports?view=organizations&year=1405',
+                 f'/advertisements/{ad.id}', f'/media/{ad.outlet_id}?year=1405')
         for path in paths:
             with self.subTest(path=path):
                 visitor, administrator = public.get(path), self.client.get(path)
@@ -36,9 +36,9 @@ class PageSeparationTests(AppTestCase):
         self.sign_in(admin=True)
         public = self.app.test_client()
         for client in (public, self.client):
-            response = client.get('/reports?year=1405&half=2&export=xlsx')
+            response = client.get('/reports?year=1405&export=xlsx')
             self.assertEqual(load_workbook(io.BytesIO(response.data)).active.max_row, 1)
-        response = self.client.get('/admin/advertisements?year=1405&half=2&export=xlsx')
+        response = self.client.get('/admin/advertisements?year=1405&export=xlsx')
         self.assertEqual(load_workbook(io.BytesIO(response.data)).active.max_row, 2)
 
     def test_management_routes_require_the_appropriate_role(self):
@@ -76,7 +76,7 @@ class PageSeparationTests(AppTestCase):
     def test_organization_drilldown_preserves_the_report_filters(self):
         self.add_ad(approval_date=date(2026, 10, 1), amount=2500)
         response = self.client.get('/reports', query_string={
-            'year': 1405, 'half': 2, 'view': 'organizations', 'amount_min': 2000,
+            'year': 1405,  'view': 'organizations', 'amount_min': 2000,
             'date_field': 'approval_date', 'start': '2026-10-01', 'end': '2026-10-02',
         })
         self.assertEqual(response.status_code, 200)

@@ -1,22 +1,22 @@
+{% from 'partials/table-controls.html' import sort_heading, search_controls, pagination with context %}
 <section class="card report-results">
 {% if view == 'media' %}
   <div class="section-heading"><div><h2>سهم هر رسانه از آگهی‌های دوره</h2><p>حجم کل دوره: <strong>{{ state.total }} کادر</strong> · هدف‌ها فقط برای گروه‌ها و بر اساس همین حجم محاسبه می‌شوند.</p></div></div>
   {% include 'partials/group-summary.html' %}
   {% include 'partials/media-table.html' %}
-  <details class="report-explainer no-print"><summary><span class="accordion-copy"><span>این اعداد چه معنایی دارند؟</span><small>راهنمای سهم واقعی رسانه و هدف گروه</small></span></summary><div class="accordion-body"><dl class="report-glossary"><div><dt>حجم دریافتی</dt><dd>مجموع کادر آگهی‌هایی که در این دوره به رسانه تخصیص یافته است.</dd></div><div><dt>سهم هدف</dt><dd>حجم کل دوره × درصد هدف گروه. رسانه‌ها سهمیه جداگانه ندارند. هدف گروه‌های محلی هر کدام ۲۵٪ و گروه سراسری ۵۰٪ است.</dd></div><div><dt>وضعیت سهم</dt><dd>عبور گروه از هدف در خلاصه گروه‌ها مشخص می‌شود. جدول رسانه‌ها فقط عملکرد واقعی آن‌ها را نشان می‌دهد.</dd></div></dl></div></details>
+  <details class="report-explainer no-print"><summary><span class="accordion-copy"><span>این اعداد چه معنایی دارند؟</span><small>راهنمای سهم واقعی رسانه و هدف گروه</small></span></summary><div class="accordion-body"><dl class="report-glossary"><div><dt>حجم دریافتی</dt><dd>مجموع کادر آگهی‌هایی که در این دوره به رسانه تخصیص یافته است.</dd></div><div><dt>سهم هدف</dt><dd>حجم کل دوره × درصد هدف گروه. رسانه‌ها سهمیه جداگانه ندارند. هدف همه رسانه‌های محلی در مجموع ۵۰٪ و گروه سراسری ۵۰٪ است.</dd></div><div><dt>وضعیت سهم</dt><dd>عبور گروه از هدف در خلاصه گروه‌ها مشخص می‌شود. جدول رسانه‌ها فقط عملکرد واقعی آن‌ها را نشان می‌دهد.</dd></div></dl></div></details>
 {% elif view == 'organizations' %}
   <div class="section-heading"><h2>آگهی‌های هر سازمان</h2><span class="muted">{{ grouped_organizations|length }} سازمان در نتایج</span></div>
   <div class="table-wrap"><table><thead><tr><th>سازمان آگهی‌دهنده</th><th>تعداد آگهی</th><th>حجم (کادر)</th><th>مبلغ (ریال)</th></tr></thead><tbody>{% for row in grouped_organizations %}<tr><td><a href="{{ query_url(view='ads',organization_id=row.id,page=1,export='') }}">{{ row.name }}</a></td><td>{{ row.count|number }}</td><td>{{ row.volume|boxes }}</td><td>{{ row.amount|number }}</td></tr>{% else %}<tr><td colspan="4" class="empty-cell"><strong>سازمانی در این نتایج پیدا نشد.</strong><p>بازه تاریخ یا فیلترها را تغییر دهید.</p></td></tr>{% endfor %}</tbody></table></div>
 {% else %}
   <div class="section-heading"><h2>{{ 'فهرست آگهی‌ها' if management else 'آگهی‌های یافت‌شده' }}</h2><span class="badge">{{ totals[0]|number }} آگهی</span></div>
+  {{ search_controls() }}
   {% if rows %}
-  <div class="table-wrap"><table class="advertisement-table"><thead><tr>{% for key in selected_columns %}<th>{{ columns[key] }}</th>{% endfor %}<th class="no-print actions-column">{{ 'عملیات' if management else 'جزئیات' }}</th></tr></thead><tbody>
+  <div class="table-wrap"><table class="advertisement-table" data-server-table><thead><tr>{% for key in selected_columns %}{{ sort_heading(key, columns[key]) }}{% endfor %}<th class="no-print actions-column">{{ 'عملیات' if management else 'جزئیات' }}</th></tr></thead><tbody>
   {% for ad in rows %}<tr>{% for key in selected_columns %}<td><div class="cell-content">{% if key == 'file' and ad.file_key %}<a href="{{ url_for('web.attachment',ad_id=ad.id) }}">دریافت فایل</a>{% elif key in ['amount','approved_amount'] %}{{ ad[key]|number }}{% else %}{{ report_cell(ad,key) }}{% endif %}</div></td>{% endfor %}<td class="no-print">{% include ad_actions_template %}</td></tr>
   {% endfor %}
   </tbody></table></div>
-  {% else %}<div class="report-empty-state" role="status"><h3>آگهی‌ای با این شرایط پیدا نشد.</h3><p>{{ 'برای دیدن آگهی‌های تأییدنشده، مبنای تاریخ را «تاریخ تخصیص» انتخاب کنید.' if filters.date_field == 'approval_date' else 'بازه تاریخ را تغییر دهید یا فیلترها را پاک کنید.' }}</p></div>{% endif %}
-  {% if pages > 1 %}
-  <nav class="pagination no-print" aria-label="صفحه‌های نتایج">{% if page > 1 %}<a class="button secondary" href="{{ query_url(page=page-1,export='') }}">صفحه قبل</a>{% endif %}<span>صفحه {{ page }} از {{ pages }}</span>{% if page < pages %}<a class="button secondary" href="{{ query_url(page=page+1,export='') }}">صفحه بعد</a>{% endif %}</nav>
-  {% endif %}
+  {% else %}<div class="report-empty-state" role="status"><h3>آگهی‌ای با این شرایط پیدا نشد.</h3><p>{{ 'برای شروع، آگهی جدیدی ثبت کنید.' if management else ('برای دیدن آگهی‌های تأییدنشده، مبنای تاریخ را «تاریخ تخصیص» انتخاب کنید.' if filters.date_field == 'approval_date' else 'بازه تاریخ را تغییر دهید یا فیلترها را پاک کنید.') }}</p></div>{% endif %}
+  {{ pagination() }}
 {% endif %}
 </section>

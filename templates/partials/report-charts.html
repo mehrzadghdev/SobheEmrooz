@@ -1,0 +1,31 @@
+<section class="report-charts" data-report-charts aria-labelledby="report-charts-heading">
+  <div class="report-result-heading"><h2 id="report-charts-heading">نمودارهای توزیع سالانه</h2><p>سال {{ selected.year }} · تمام آگهی‌های معتبر بر اساس تاریخ تخصیص · حجم کل {{ charts.total }} کادر</p></div>
+  <div class="report-charts-grid">
+    <article class="card report-line-card">
+      <div class="section-heading chart-heading"><div><span class="chart-eyebrow">روند توزیع</span><h3>تخصیص ماهانه آگهی‌ها</h3><p>حجم دریافتی هر گروه در ماه‌های سال، به کادر</p></div>
+        <div class="chart-view-switch no-print" role="group" aria-label="نوع نمودار ماهانه"><button type="button" data-chart-mode="line" aria-pressed="true" disabled>خطی</button><button type="button" data-chart-mode="bar" aria-pressed="false" disabled>میله‌ای</button></div>
+      </div>
+      <div class="chart-series-key"><span><i class="chart-swatch chart-local"></i>محلی</span><span><i class="chart-swatch chart-national"></i>سراسری</span></div>
+      {% if charts.total_units %}<div class="chart-line-scroll" data-line-chart hidden></div>{% else %}<p class="chart-empty">هنوز حجمی در این سال تخصیص نیافته است.</p>{% endif %}
+    </article>
+    <article class="card report-pie-card">
+      <div class="section-heading"><div><span class="chart-eyebrow">ترکیب تخصیص</span><h3>سهم محلی و سراسری</h3><p>هر بخش را برای مشاهده سهم رسانه‌ها انتخاب کنید.</p></div></div>
+      {% if charts.total_units %}<div class="chart-pie" data-summary-pie hidden></div>{% else %}<div class="chart-empty-pie" aria-hidden="true"></div><p class="chart-empty">پس از ثبت آگهی، درصدها در این نمودار نمایش داده می‌شوند.</p>{% endif %}
+      <div class="chart-group-legend">
+      {% for group in charts.groups %}
+        <button type="button" class="chart-group-button" data-chart-category="{{ group.key }}" aria-haspopup="dialog" disabled>
+          <i class="chart-swatch chart-{{ group.key }}"></i><span>{{ group.label }}<small>{{ group.allocated }} کادر</small></span><strong class="percentage-status {{ 'warning' if state.groups[group.key].exceeded else 'success' }}">{{ group.percent }}٪</strong><span aria-hidden="true">←</span>
+        </button>
+      {% endfor %}
+      </div>
+    </article>
+  </div>
+  <details class="chart-data-table"><summary>داده‌های نمودارها</summary><div class="table-wrap"><table><caption>حجم تخصیص ماهانه در سال {{ selected.year }}، به کادر</caption><thead><tr><th>ماه</th><th>محلی</th><th>سراسری</th></tr></thead><tbody>{% for month in charts.months %}<tr><th scope="row">{{ month.name }}</th><td>{{ month.local|boxes }}</td><td>{{ month.national|boxes }}</td></tr>{% endfor %}</tbody></table></div></details>
+  <noscript><p class="help-text">جدول بالا حجم ماهانه را نشان می‌دهد. برای نمودارها و باز کردن سهم رسانه‌ها، جاوااسکریپت را فعال کنید.</p></noscript>
+  <dialog class="chart-detail-dialog no-print" data-chart-dialog aria-labelledby="chart-detail-title" aria-describedby="chart-detail-description">
+    <div class="chart-dialog-heading"><h2 id="chart-detail-title">سهم رسانه‌ها</h2><button type="button" class="secondary" data-chart-close aria-label="بستن نمودار" autofocus>بستن ×</button></div>
+    <p id="chart-detail-description"></p>
+    <div class="chart-detail-layout"><div class="chart-pie" data-detail-pie></div><div class="chart-media-legend" data-detail-legend></div></div>
+  </dialog>
+  <script type="application/json" data-report-chart-data>{{ charts|tojson }}</script>
+</section>

@@ -7,22 +7,22 @@ from tests.support import AppTestCase
 
 
 class AllocationTests(AppTestCase):
-    def test_1000_box_targets_are_25_25_50(self):
+    def test_1000_box_targets_are_50_50(self):
         self.volumes([125, 125, 125, 125, 250, 250])
         state = a.snapshot(self.period)
         self.assertEqual(state['total'], '1000')
-        self.assertEqual(state['categories'], {'local_one':25000, 'local_two':25000, 'national':50000})
-        self.assertEqual([group['expected'] for group in state['groups'].values()], ['250','250','500'])
+        self.assertEqual(state['categories'], {'local':50000, 'national':50000})
+        self.assertEqual([group['expected'] for group in state['groups'].values()], ['500','500'])
         self.assertFalse(any(group['exceeded'] for group in state['groups'].values()))
         self.assertTrue(all('expected' not in row and 'target_share' not in row for row in state['rows']))
 
     def test_quota_uses_overall_target_not_category_actual(self):
-        self.volumes([130,170,100,100,250,250])
+        self.volumes([180,170,100,100,250,200])
         state = a.snapshot(self.period)
         row = state['rows'][0]
-        group = state['groups']['local_one']
-        self.assertEqual(group['expected'], '250')
-        self.assertEqual(row['category_percent'], '43.33')
+        group = state['groups']['local']
+        self.assertEqual(group['expected'], '500')
+        self.assertEqual(row['category_percent'], '32.73')
         self.assertTrue(group['exceeded'])
         self.assertEqual(group['excess'], '50')
 
@@ -62,14 +62,14 @@ class AllocationTests(AppTestCase):
         self.assertTrue(self.period.recovery)
         self.assertEqual(a.snapshot(self.period)['local_percent'], '62.5')
 
-    def test_local_category_with_larger_shortfall_has_priority(self):
+    def test_lowest_volume_is_chosen_across_all_local_media(self):
         self.volumes([200,0,100,0,300,0])
-        self.assertEqual(a.preview(self.period, units(1))['recommended']['category'], 'local_two')
+        self.assertEqual(a.preview(self.period, units(1))['recommended']['outlet_id'], self.outlets[1].id)
 
     def test_lowest_volume_ignores_legacy_individual_shares(self):
         self.period.targets[0].share_bp, self.period.targets[1].share_bp = 9000, 1000
         db.session.commit()
-        self.volumes([90,20,200,0,500,0])
+        self.volumes([90,20,200,30,500,0])
         result = a.preview(self.period, units(1))
         self.assertEqual(result['recommended']['outlet_id'], self.outlets[1].id)
 
@@ -87,7 +87,7 @@ class AllocationTests(AppTestCase):
         result = a.preview(self.period, units(1))
         self.assertEqual(result['recommended']['outlet_id'], self.outlets[0].id)
         self.assertNotIn(self.outlets[1].id, [row['id'] for row in result['options']])
-        self.assertTrue(result['groups']['local_one']['projected_exceeded'])
+        self.assertTrue(result['groups']['local']['projected_exceeded'])
 
     def test_missing_preferred_group_shows_manual_choices(self):
         for outlet in self.outlets[:4]:
@@ -104,21 +104,21 @@ class AllocationTests(AppTestCase):
         state = a.snapshot(self.period)
         self.assertEqual(state['total_units'], 30)
         self.assertEqual(state['total'], '0.3')
-        self.assertEqual(state['groups']['local_one']['expected_units'], Fraction(15,2))
+        self.assertEqual(state['groups']['local']['expected_units'], Fraction(15))
 
     def test_displayed_quota_does_not_hide_small_excess_by_rounding(self):
-        self.volumes(['0.02',0,0,0,'0.03',0])
-        row = a.snapshot(self.period)['groups']['local_one']
-        self.assertEqual(row['expected'],'0.0125')
-        self.assertEqual(row['allocated'],'0.02')
+        self.volumes(['0.03',0,0,0,'0.02',0])
+        row = a.snapshot(self.period)['groups']['local']
+        self.assertEqual(row['expected'],'0.025')
+        self.assertEqual(row['allocated'],'0.03')
         self.assertTrue(row['exceeded'])
 
     def test_periods_keep_separate_group_totals(self):
-        other = self.make_period(1405, 1)
+        other = self.make_period(1404)
         other.targets[0].share_bp, other.targets[1].share_bp = 2500, 7500
         db.session.commit()
         self.add_ad(0, 100, period=other)
         self.add_ad(0, 10)
-        self.assertEqual(a.snapshot(other)['groups']['local_one']['allocated'], '100')
-        self.assertEqual(a.snapshot(self.period)['groups']['local_one']['allocated'], '10')
+        self.assertEqual(a.snapshot(other)['groups']['local']['allocated'], '100')
+        self.assertEqual(a.snapshot(self.period)['groups']['local']['allocated'], '10')
         self.assertEqual(a.snapshot(self.period)['total'], '10')

@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/fonts.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/pwa.css') }}">
+  <script src="{{ url_for('static', filename='js/button-loading.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/pwa.js') }}" data-worker-url="{{ url_for('pwa.service_worker') }}" data-scope="{{ url_for('web.dashboard') }}" defer></script>
 </head>
 <body class="pwa-offline-page">

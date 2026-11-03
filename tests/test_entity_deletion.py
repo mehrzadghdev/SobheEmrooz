@@ -60,7 +60,7 @@ class EntityDeletionTests(AppTestCase):
         self.assertEqual(len(self.period.targets), 6)
 
     def test_deleting_an_empty_period_removes_only_its_targets(self):
-        other = self.make_period(1405, 1)
+        other = self.make_period(1404)
         period_id, target_ids = self.period.id, [target.id for target in self.period.targets]
         response = self.client.post(f'/admin/periods/{period_id}/delete', data={'revision': self.period.revision})
         self.assertEqual(response.status_code, 302)
@@ -76,7 +76,7 @@ class EntityDeletionTests(AppTestCase):
         response = self.client.post(f'/admin/periods/{self.period.id}/delete', data={'revision': self.period.revision}, follow_redirects=True)
         self.assertIn('دوره دارای سابقه آگهی قابل حذف نیست.', response.text)
         self.assertIsNotNone(db.session.get(Advertisement, ad.id))
-        empty = self.make_period(1406, 1)
+        empty = self.make_period(1406)
         revision = empty.revision
         empty.revision += 1
         db.session.commit()

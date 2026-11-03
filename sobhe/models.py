@@ -27,7 +27,7 @@ class Outlet(db.Model):
     active = db.Column(db.Boolean, default=True, nullable=False)
     # NULL is reserved for legacy media awaiting explicit classification.
     category = db.Column(db.String(20))
-    __table_args__ = (CheckConstraint("category IN ('local_one','local_two','national')"),)
+    __table_args__ = (CheckConstraint("category IN ('local','national')"),)
 
 
 class Organization(db.Model):
@@ -45,13 +45,12 @@ class Subject(db.Model):
 class Period(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     year = db.Column(db.Integer, nullable=False)
-    half = db.Column(db.Integer, nullable=False)
     active = db.Column(db.Boolean, default=False, nullable=False)
     recovery = db.Column(db.Boolean, default=False, nullable=False)
     revision = db.Column(db.Integer, default=1, nullable=False)
     targets = db.relationship('OutletTarget', back_populates='period', order_by='OutletTarget.outlet_id',
                               lazy='selectin')
-    __table_args__ = (UniqueConstraint('year', 'half'), CheckConstraint('half IN (1,2)'),
+    __table_args__ = (UniqueConstraint('year'),
                       CheckConstraint('year BETWEEN 1200 AND 1600'))
 
 
@@ -66,7 +65,7 @@ class OutletTarget(db.Model):
     period = db.relationship('Period', back_populates='targets')
     outlet = db.relationship('Outlet', lazy='joined')
     __table_args__ = (UniqueConstraint('period_id', 'outlet_id'),
-                      CheckConstraint("category IN ('local_one','local_two','national')"),
+                      CheckConstraint("category IN ('local','national')"),
                       CheckConstraint('share_bp BETWEEN 0 AND 10000'))
 
 
@@ -77,7 +76,7 @@ class Advertisement(db.Model):
     outlet_id = db.Column(db.Integer, db.ForeignKey('outlet.id'), nullable=False, index=True)
     period_id = db.Column(db.Integer, db.ForeignKey('period.id'), nullable=False, index=True)
     allocation_date = db.Column(db.Date, nullable=False, index=True)
-    volume_units = db.Column(db.BigInteger, nullable=False)
+    volume_units = db.Column(db.BigInteger)
     subject_id = db.Column(db.Integer, db.ForeignKey('subject.id'))
     subject_description = db.Column(db.Text, default='', nullable=False)
     letter_number = db.Column(db.String(100), default='', nullable=False)

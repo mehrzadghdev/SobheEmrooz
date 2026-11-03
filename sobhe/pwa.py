@@ -8,10 +8,11 @@ from flask import Blueprint, current_app, jsonify, make_response, render_templat
 bp = Blueprint('pwa', __name__)
 CORE_ASSETS = (
     'css/app.css', 'css/dashboard.css', 'css/workspaces.css', 'css/fonts.css', 'css/pwa.css',
-    'js/theme.js', 'js/pwa.js', 'js/app.js', 'js/page-navigation.js',
+    'js/theme.js', 'js/button-loading.js', 'js/pwa.js', 'js/app.js', 'js/page-navigation.js',
+    'css/report-charts.css', 'js/report-charts.js', 'css/tables.css', 'js/tables.js',
     'js/jalali-date.js', 'js/jalali-picker.js', 'js/allocation.js',
     'fonts/woff2/IRANYekanWebRegular.woff2', 'fonts/woff2/IRANYekanWebMedium.woff2',
-    'fonts/woff2/IRANYekanWebBold.woff2', 'logo.png', 'icon.svg',
+    'fonts/woff2/IRANYekanWebBold.woff2', 'icon.svg',
     'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
 )
 

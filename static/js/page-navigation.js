@@ -55,11 +55,11 @@
         main.prepend(alert);
     }
 
-    async function navigate(url, {method = 'GET', body, pop = false, position, preserveScroll = false} = {}) {
+    async function navigate(url, {method = 'GET', body, pop = false, position, preserveScroll = false, trigger} = {}) {
         // A submitted mutation must finish before another page request can replace it.
         if (pending?.method === 'POST') return;
         pending?.controller.abort();
-        const request = {controller: new AbortController(), method};
+        const request = {controller: new AbortController(), method, finishLoading: window.SobheLoading?.start(trigger)};
         pending = request;
         saveScroll();
         const previousScroll = [scrollX, scrollY];
@@ -132,6 +132,7 @@
             showError(failureMessage);
         } finally {
             clearTimeout(timeout);
+            request.finishLoading?.();
             if (pending === request) {
                 pending = null;
                 busy(false, failureMessage);
@@ -140,15 +141,59 @@
         }
     }
 
+    function downloadable(url) {
+        return url.origin === location.origin && (url.searchParams.get('export') === 'xlsx'
+            || /\/advertisements\/\d+\/file\/?$/.test(url.pathname));
+    }
+
+    async function downloadFile(url, trigger) {
+        const finishLoading = window.SobheLoading?.start(trigger);
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 60000);
+        try {
+            const response = await fetch(url, {signal: controller.signal, credentials: 'same-origin', cache: 'no-store'});
+            if (!response.ok || /text\/html|application\/json/i.test(response.headers.get('Content-Type') || '')) {
+                throw new Error('دریافت فایل انجام نشد؛ دسترسی و اتصال اینترنت را بررسی و دوباره تلاش کنید.');
+            }
+            const disposition = response.headers.get('Content-Disposition') || '';
+            const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+            const plain = disposition.match(/filename="?([^";]+)/i);
+            let name = plain?.[1] || (url.searchParams.get('export') ? 'advertisement-report.xlsx' : 'download');
+            if (encoded) {
+                try { name = decodeURIComponent(encoded[1].trim()); } catch (_) { /* Use the plain filename. */ }
+            }
+            const blob = await response.blob();
+            const objectURL = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = objectURL;
+            link.download = name;
+            document.body.append(link);
+            link.click();
+            link.remove();
+            setTimeout(() => URL.revokeObjectURL(objectURL), 1000);
+        } catch (error) {
+            showError(error.name === 'AbortError' ? 'دریافت فایل طولانی شد؛ دوباره تلاش کنید.'
+                : (error.name === 'Error' ? error.message : 'دریافت فایل ناموفق بود؛ دوباره تلاش کنید.'));
+        } finally {
+            clearTimeout(timeout);
+            finishLoading?.();
+        }
+    }
+
     document.addEventListener('click', event => {
         if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
         const link = event.target.closest('a[href]');
         if (!link || link.hasAttribute('download') || link.hasAttribute('target') || link.closest('[data-native-navigation]')) return;
         const url = new URL(link.href, location.href);
+        if (downloadable(url)) {
+            event.preventDefault();
+            downloadFile(url, link);
+            return;
+        }
         if (!internal(url)) return;
         if (url.pathname === location.pathname && url.search === location.search && url.hash) return;
         event.preventDefault();
-        navigate(url);
+        navigate(url, {trigger: link});
     });
 
     document.addEventListener('submit', event => {
@@ -164,7 +209,8 @@
         if (method === 'GET') url.search = new URLSearchParams(data).toString();
         if (!internal(url)) return;
         event.preventDefault();
-        navigate(url, {method, body: method === 'POST' ? data : undefined, preserveScroll: method === 'POST'});
+        navigate(url, {method, body: method === 'POST' ? data : undefined, preserveScroll: method === 'POST',
+            trigger: button || form.querySelector('button[type="submit"], button:not([type])')});
     });
 
     history.scrollRestoration = 'manual';

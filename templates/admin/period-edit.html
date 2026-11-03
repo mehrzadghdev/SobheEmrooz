@@ -2,7 +2,7 @@
 {% from 'partials/back-link.html' import back_link %}{% block title %}{{ period_label(period) }} | مدیریت سامانه{% endblock %}
 {% block content %}
 {{ back_link(url_for('web.periods'), 'بازگشت به دوره‌ها') }}
-<div class="page-heading"><div><h1>{{ period_label(period) }}</h1><p>هدف گروه‌های محلی هر کدام ۲۵٪ و گروه سراسری ۵۰٪ است. رسانه‌ها بر اساس نوع خود به‌صورت خودکار در دوره قرار می‌گیرند.</p></div></div>
+<div class="page-heading"><div><h1>{{ period_label(period) }}</h1><p>هدف همه رسانه‌های محلی در مجموع ۵۰٪ و گروه سراسری ۵۰٪ است. رسانه‌ها بر اساس نوع خود به‌صورت خودکار در دوره قرار می‌گیرند.</p></div></div>
 {% include 'partials/group-summary.html' %}
 {% if unclassified_count %}<div class="alert warning" role="alert">{{ unclassified_count }} رسانه هنوز نوع مشخصی ندارند و تا تعیین نوع در تخصیص‌های جدید حضور ندارند. <a href="{{ url_for('web.catalog',kind='outlets') }}">تعیین نوع رسانه‌ها</a></div>{% endif %}
 <section class="card"><h2>وضعیت دوره</h2>

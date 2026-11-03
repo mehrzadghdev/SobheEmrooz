@@ -5,5 +5,6 @@
 <div class="page-heading"><div><h1>{{ 'گزارش آگهی‌ها' if view == 'ads' else ('سهم رسانه‌ها' if view == 'media' else 'گزارش سازمان‌ها') }}</h1><p>{{ 'آگهی‌ها را جستجو کنید و جزئیات یا فایل آن‌ها را ببینید.' if view == 'ads' else ('هدف گروه‌ها و حجم دریافتی رسانه‌ها را ببینید.' if view == 'media' else 'تعداد، حجم و مبلغ آگهی‌های هر سازمان را در یک نگاه ببینید.') }}</p></div>{% include 'partials/report-exports.html' %}</div>
 {% include 'partials/report-period.html' %}
 {% if view != 'media' %}{% include 'partials/report-filters.html' %}{% include 'partials/report-stats.html' %}{% endif %}
+{% include 'partials/report-charts.html' %}
 {% include 'partials/report-results.html' %}
 {% endblock %}

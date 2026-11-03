@@ -10,7 +10,6 @@ from werkzeug.security import generate_password_hash
 
 from sobhe import create_app
 from sobhe.commands import migrate
-from sobhe.constants import CATEGORIES
 from sobhe.models import *
 from sobhe.membership import enroll_period
 from sobhe.services import period_bounds, units
@@ -32,13 +31,13 @@ class AppTestCase(unittest.TestCase):
         migrate()
         self.admin = User(username='administrator', name='مدیر آزمایش', role='admin', active=True, password_hash=self.password_hash)
         self.operator = User(username='operator', name='کارشناس آزمایش', role='operator', active=True, password_hash=self.password_hash)
-        self.outlets = [Outlet(name=name, active=True, category=CATEGORIES[index // 2])
+        self.outlets = [Outlet(name=name, active=True, category='local' if index < 4 else 'national')
                         for index, name in enumerate(('صبح امروز', 'شهرآرا', 'محلی دوم', 'محلی سوم', 'خراسان', 'اطلاعات'))]
         self.organization = Organization(name='راه و شهرسازی', active=True)
         self.other_organization = Organization(name='شهرداری', active=True)
         db.session.add_all([self.admin, self.operator, self.organization, self.other_organization] + self.outlets)
         db.session.commit()
-        self.period = self.make_period(1405, 2)
+        self.period = self.make_period(1405)
         self.client = self.app.test_client()
         self.sign_in()
         self.next_ma = 5000
@@ -49,8 +48,8 @@ class AppTestCase(unittest.TestCase):
         self.context.pop()
         self.temp.cleanup()
 
-    def make_period(self, year, half):
-        period = Period(year=year, half=half, active=True)
+    def make_period(self, year):
+        period = Period(year=year, active=True)
         db.session.add(period)
         db.session.flush()
         enroll_period(period)
@@ -68,7 +67,7 @@ class AppTestCase(unittest.TestCase):
         self.next_ma += 1
         values = dict(ma_reference=self.next_ma, organization_id=self.organization.id,
                       outlet_id=self.outlets[index].id, period_id=period.id, volume_units=units(volume, positive=True),
-                      allocation_date=period_bounds(period.year, period.half)[0], creator_id=self.operator.id)
+                      allocation_date=period_bounds(period.year)[0], creator_id=self.operator.id)
         values.update(kwargs)
         ad = Advertisement(**values)
         db.session.add(ad)

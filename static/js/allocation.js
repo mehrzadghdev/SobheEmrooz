@@ -17,14 +17,14 @@
         const save = document.getElementById('save-ad');
         const categories = JSON.parse(form.dataset.categories);
         let manual = Boolean(outlet.value);
-        let timer, controller, current;
+        let timer, controller, current, finishPreview;
         function write(id, value) { document.getElementById(id).textContent = value ?? '—'; }
         function show(data) {
             current = data;
             token.value = data.token;
-            document.getElementById('preview-results').hidden = false;
-            write('preview-period', `${data.period_year} · ${data.period_half === 1 ? 'فروردین تا شهریور' : 'مهر تا اسفند'}`);
-            write('preview-status', data.recovery ? 'پیشنهاد سراسری برای بازگرداندن سهم محلی به ۵۰ درصد' : 'اولویت با گروه‌های محلی و رسانه‌های دارای کمترین حجم دریافتی است.');
+            document.getElementById('preview-results').hidden = !volume.value.trim();
+            write('preview-period', `${data.period_year} · فروردین تا اسفند`);
+            write('preview-status', data.recovery ? 'پیشنهاد سراسری برای بازگرداندن سهم محلی به ۵۰ درصد' : 'اولویت با رسانه‌های محلی دارای کمترین حجم دریافتی در سال است.');
             write('recommended-name', data.recommended?.name || 'رسانه فعال در گروه موردنیاز وجود ندارد');
             write('recommended-allocated', data.recommended ? `${data.recommended.allocated} کادر` : '—');
             write('recommended-category-percent', data.recommended ? `${data.recommended.category_percent}٪` : '—');
@@ -48,31 +48,29 @@
             });
             document.getElementById('override-label').hidden = !data.warnings.length;
             acknowledgement.checked = false;
-            const chosen = data.selected?.outlet_id || '';
+            const chosen = (manual || volume.value.trim()) ? (data.selected?.outlet_id || '') : '';
             const options = data.options.map(option => new Option(`${option.name} · ${categories[option.category]}`, option.id));
             outlet.replaceChildren(new Option('رسانه دریافت‌کننده را انتخاب کنید…', ''), ...options);
             outlet.value = String(chosen);
             document.getElementById('use-recommendation').disabled = !data.recommended;
         }
-        async function refresh() {
+        async function refresh(trigger) {
             token.value = '';
             acknowledgement.checked = false;
             controller?.abort();
             controller = null;
-            if (!volume.value.trim() || !allocationDate.value) {
-                status.textContent = 'برای دریافت پیشنهاد، تاریخ تخصیص و حجم آگهی را وارد کنید.';
-                document.getElementById('preview-results').hidden = true;
-                save.disabled = false;
-                panel.setAttribute('aria-busy', 'false');
-                return;
-            }
+            finishPreview?.();
+            const finishSave = window.SobheLoading?.start(save);
+            const finishTrigger = window.SobheLoading?.start(trigger);
+            const finish = () => { finishSave?.(); finishTrigger?.(); };
+            finishPreview = finish;
             controller = new AbortController();
             const activeController = controller;
             panel.setAttribute('aria-busy', 'true');
             save.disabled = true;
             status.textContent = 'در حال محاسبه سهم و پیشنهاد رسانه…';
             const url = new URL(form.dataset.previewUrl, window.location.origin);
-            url.searchParams.set('allocation_date', allocationDate.value);
+            url.searchParams.set('allocation_date', allocationDate.value || form.dataset.defaultAllocationDate);
             url.searchParams.set('volume', volume.value);
             if (manual && outlet.value) url.searchParams.set('outlet_id', outlet.value);
             if (form.dataset.excludeId) url.searchParams.set('exclude_id', form.dataset.excludeId);
@@ -95,6 +93,8 @@
                     document.getElementById('preview-results').hidden = true;
                 }
             } finally {
+                finish();
+                if (finishPreview === finish) finishPreview = null;
                 if (activeController === controller && form.isConnected) {
                     panel.setAttribute('aria-busy', 'false');
                     save.disabled = false;
@@ -103,6 +103,8 @@
         }
         function schedule() {
             controller?.abort();
+            finishPreview?.();
+            finishPreview = window.SobheLoading?.start(save);
             controller = null;
             token.value = '';
             acknowledgement.checked = false;
@@ -119,14 +121,16 @@
         document.getElementById('use-recommendation').addEventListener('click', () => {
             manual = false;
             outlet.value = String(current?.recommended?.outlet_id || '');
-            refresh();
+            refresh(document.getElementById('use-recommendation'));
         });
         const initial = document.getElementById('initial-preview');
         if (initial) show(JSON.parse(initial.textContent));
-        else if (volume.value && allocationDate.value) refresh();
+        else if (volume.value) refresh();
         cleanup = () => {
             clearTimeout(timer);
             controller?.abort();
+            finishPreview?.();
+            finishPreview = null;
             controller = null;
         };
     }

@@ -12,8 +12,7 @@ from .services import boxes, quota_boxes, decimal_string, period_key, category_l
 
 
 def find_period(value):
-    year, half = period_key(value)
-    return Period.query.filter_by(year=year, half=half).first()
+    return Period.query.filter_by(year=period_key(value)).first()
 
 
 def group_stats(category, amount, total):
@@ -33,13 +32,13 @@ def snapshot(period, *, exclude_id=None):
         Advertisement.period_id == period.id, Advertisement.voided_at.is_(None)) if period else None
     if query is not None and exclude_id:
         query = query.filter(Advertisement.id != exclude_id)
-    allocated = {row[0]: (int(row[1]), row[2]) for row in query.group_by(Advertisement.outlet_id)} if query is not None else {}
+    allocated = {row[0]: (int(row[1] or 0), row[2]) for row in query.group_by(Advertisement.outlet_id)} if query is not None else {}
     category_units = {key: sum(allocated.get(target.outlet_id, (0, 0))[0] for target in targets if target.category == key)
                       for key in CATEGORIES}
     total = sum(category_units.values())
     result = {'total_units': total, 'total': boxes(total), 'categories': category_units,
               'groups': {key: group_stats(key, category_units[key], total) for key in CATEGORIES},
-              'local_units': category_units['local_one'] + category_units['local_two'],
+              'local_units': category_units['local'],
               'rows': [], 'targets': targets, 'period': period}
     for target in targets:
         amount, last = allocated.get(target.outlet_id, (0, 0))
@@ -69,9 +68,8 @@ def recommend(state, volume_units):
         recovery = True
     if total and not recovery and 5 * (local + volume_units) > 3 * (total + volume_units):
         recovery = True
-    categories = ['national'] if recovery else ['local_one', 'local_two']
+    categories = ['national'] if recovery else ['local']
     eligible = [row for row in state['rows'] if row['active']]
-    categories.sort(key=lambda key: (-(Fraction(total * WEIGHTS[key], 100) - state['categories'][key]), key))
     for category in categories:
         candidates = [row for row in eligible if row['category'] == category]
         if candidates:
@@ -121,8 +119,9 @@ def preview(period, volume_units, selected_id=None, *, exclude_id=None, record_v
             warnings.append(f'با این تخصیص، گروه {labels[selected["category"]]} از سهم هدف عبور می‌کند: '
                             f'{group["projected_allocated"]} کادر در برابر هدف {group["projected_expected"]} کادر.')
         selected_data.update(projected_allocated=boxes(after),
-                             projected_percent=decimal_string(Fraction(after * 100, total_after)),
-                             projected_category_percent=decimal_string(Fraction(after * 100, group['projected_allocated_units'])))
+                             projected_percent=decimal_string(Fraction(after * 100, total_after)) if total_after else '0',
+                             projected_category_percent=decimal_string(Fraction(after * 100, group['projected_allocated_units']))
+                             if group['projected_allocated_units'] else '0')
     local_after = state['local_units'] + (volume_units if selected and selected['category'] != 'national' else 0)
     if selected and 5 * local_after > 3 * total_after:
         warnings.append('سهم محلی پس از تخصیص از سقف ترجیحی ۶۰ درصد عبور می‌کند؛ پیشنهادهای بعدی به سمت سراسری می‌رود.')
@@ -136,7 +135,7 @@ def preview(period, volume_units, selected_id=None, *, exclude_id=None, record_v
     }
     digest = hashlib.sha256(json.dumps(fingerprint, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
     token = URLSafeTimedSerializer(current_app.secret_key, salt='allocation-preview').dumps(digest)
-    return {'period_id': period.id, 'period_year': period.year, 'period_half': period.half,
+    return {'period_id': period.id, 'period_year': period.year,
             'total': state['total'], 'local_percent': state['local_percent'], 'groups': groups,
             'projected_local_percent': decimal_string(Fraction(local_after * 100, total_after)) if total_after else '0',
             'recovery': recovery, 'recommended': public_row(recommended) if recommended else None,

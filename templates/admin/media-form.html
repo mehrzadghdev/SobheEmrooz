@@ -10,7 +10,6 @@
   <div class="fields">
     <div><label for="media-name">نام رسانه <span class="required-mark">*</span></label><input id="media-name" name="name" value="{{ data.get('name','') }}" maxlength="150" required autofocus></div>
     <div><label for="media-type">نوع رسانه <span class="required-mark">*</span></label><select id="media-type" name="media_type" required><option value="">انتخاب کنید…</option><option value="national" {{ 'selected' if data.get('media_type') == 'national' }}>سراسری</option><option value="local" {{ 'selected' if data.get('media_type') == 'local' }}>محلی</option></select></div>
-    <div data-local-group><label for="media-local-group">گروه رسانه محلی <span class="required-mark">*</span></label><select id="media-local-group" name="local_group"><option value="">برای رسانه محلی انتخاب کنید…</option>{% for key in ['local_one','local_two'] %}<option value="{{ key }}" {{ 'selected' if data.get('local_group') == key }}>{{ category_labels[key] }}</option>{% endfor %}</select></div>
   </div>
   <div class="actions"><label class="inline"><input type="checkbox" name="active" value="1" {{ 'checked' if data.get('active') == '1' }}> رسانه فعال باشد</label></div>
   <p class="help-text">رسانه فعال به‌صورت خودکار در دوره‌ها در دسترس قرار می‌گیرد. رسانه غیرفعال پیشنهاد نمی‌شود و سوابق آن باقی می‌مانند.</p>

@@ -2,7 +2,7 @@
 {% for key,group in state.groups.items() %}<article class="card" data-group="{{ key }}">
   <div class="section-heading"><h3>{{ category_labels[key] }}</h3><span class="badge" data-group-target="{{ key }}">هدف {{ group.target_percent }}٪</span></div>
   <strong class="category-volume">{{ group.allocated }} <small>کادر دریافتی</small></strong>
-  <p>هدف گروه: {{ group.expected }} کادر · سهم واقعی: {{ group.actual_percent }}٪</p>
+  <p>هدف گروه: {{ group.expected }} کادر · سهم واقعی: <strong class="percentage-status {{ 'warning' if group.exceeded else 'success' }}">{{ group.actual_percent }}٪</strong></p>
   <p>{{ group.active_count }} رسانه فعال از {{ group.media_count }} رسانه</p>
   {% if group.exceeded %}<span class="badge warning">{{ group.excess }} کادر بیشتر از هدف گروه</span>{% else %}<span class="badge success">در محدوده هدف گروه</span>{% endif %}
   {% if not group.active_count %}<p class="danger-text">این گروه رسانه فعال ندارد؛ سهم آن بین گروه‌های دیگر تقسیم نمی‌شود.</p>{% endif %}

@@ -6,7 +6,7 @@
   <div class="section-heading"><div><h2 id="report-search-title">محدوده گزارش سازمان‌ها</h2><p>بازه زمانی و گزینه‌های دلخواه را انتخاب کنید، سپس «نمایش نتایج» را بزنید.</p></div></div>
 {% endif %}
   <form method="get" id="report-filter-form" class="{{ 'accordion-body' if view == 'ads' }}">
-    <input type="hidden" name="year" value="{{ selected.year }}"><input type="hidden" name="half" value="{{ selected.half }}">
+    <input type="hidden" name="year" value="{{ selected.year }}">
     {% if not management %}<input type="hidden" name="view" value="{{ view }}">{% endif %}
     {% if view == 'ads' %}<input type="hidden" name="column_selection" value="1">{% endif %}
     <div class="fields report-date-fields">
@@ -20,10 +20,10 @@
       <div><label for="filter-outlet">رسانه دریافت‌کننده</label><select id="filter-outlet" name="outlet_id"><option value="">همه رسانه‌ها</option>{% for outlet in outlets %}<option value="{{ outlet.id }}" {{ 'selected' if request.args.get('outlet_id') == outlet.id|string }}>{{ outlet.name }}</option>{% endfor %}</select></div>
     </div>
     <details class="filter-disclosure" {% if advanced_count %}open{% endif %}>
-      <summary><span class="accordion-copy"><span>جستجوی پیشرفته</span><small>شماره م/الف، مبلغ، موضوع و وضعیت چاپ</small></span>{% if advanced_count %}<span class="accordion-meta">{{ advanced_count }} فیلتر فعال</span>{% endif %}</summary>
+      <summary><span class="accordion-copy"><span>جستجوی پیشرفته</span><small>شناسه آگهی، مبلغ، موضوع و وضعیت چاپ</small></span>{% if advanced_count %}<span class="accordion-meta">{{ advanced_count }} فیلتر فعال</span>{% endif %}</summary>
       <div class="accordion-body">
         <div class="filter-group"><h3>شماره‌ها و مبالغ</h3><div class="fields">
-          {% for key,label in [('ma','شماره م/الف'),('id','شناسه آگهی'),('amount','مبلغ آگهی (ریال)'),('approved_amount','مبلغ تأییدشده (ریال)')] %}<fieldset><legend>{{ label }}</legend><div class="range-fields"><div><label for="{{ key }}-min">از</label><input id="{{ key }}-min" name="{{ key }}_min" value="{{ request.args.get(key ~ '_min','') }}" inputmode="numeric" placeholder="بدون محدودیت"></div><div><label for="{{ key }}-max">تا</label><input id="{{ key }}-max" name="{{ key }}_max" value="{{ request.args.get(key ~ '_max','') }}" inputmode="numeric" placeholder="بدون محدودیت"></div></div></fieldset>{% endfor %}
+          {% for key,label in [('ma','شناسه آگهی'),('id','شناسه داخلی'),('amount','مبلغ آگهی (ریال)'),('approved_amount','مبلغ تأییدشده (ریال)')] %}<fieldset><legend>{{ label }}</legend><div class="range-fields"><div><label for="{{ key }}-min">از</label><input id="{{ key }}-min" name="{{ key }}_min" value="{{ request.args.get(key ~ '_min','') }}" inputmode="numeric" placeholder="بدون محدودیت"></div><div><label for="{{ key }}-max">تا</label><input id="{{ key }}-max" name="{{ key }}_max" value="{{ request.args.get(key ~ '_max','') }}" inputmode="numeric" placeholder="بدون محدودیت"></div></div></fieldset>{% endfor %}
         </div></div>
         <div class="filter-group"><h3>موضوع و متن آگهی</h3><div class="fields">
           <div><label for="filter-province">استان</label><select id="filter-province" name="province"><option value="">همه استان‌ها</option>{% for province in provinces %}<option {{ 'selected' if request.args.get('province') == province }}>{{ province }}</option>{% endfor %}</select></div>
@@ -41,6 +41,6 @@
       <div class="accordion-body"><p class="help-text">حداقل یک ستون انتخاب کنید.</p><button type="button" class="text-button" data-select-all="columns">انتخاب / لغو همه ستون‌ها</button><div class="checkbox-grid">{% for key,label in columns.items() %}<label><input type="checkbox" name="columns" value="{{ key }}" {{ 'checked' if key in selected_columns }}>{{ label }}</label>{% endfor %}</div></div>
     </details>
     {% endif %}
-    <div class="filter-actions"><div class="actions"><button type="submit">نمایش نتایج</button><a class="button secondary" href="{{ url_for(request.endpoint, year=selected.year,half=selected.half) if management else url_for('web.reports', year=selected.year,half=selected.half,view=view) }}">پاک کردن فیلترها</a></div>{% if view == 'ads' %}<label class="inline">نتیجه در هر صفحه<select name="per_page">{% for size in [25,50,100] %}<option value="{{ size }}" {{ 'selected' if per_page == size }}>{{ size }}</option>{% endfor %}</select></label>{% endif %}</div>
+    <div class="filter-actions"><div class="actions"><button type="submit">نمایش نتایج</button><a class="button secondary" href="{{ url_for(request.endpoint, year=selected.year) if management else url_for('web.reports', year=selected.year,view=view) }}">پاک کردن فیلترها</a></div>{% if view == 'ads' %}<label class="inline">نتیجه در هر صفحه<select name="per_page">{% for size in [15,30,50,100] %}<option value="{{ size }}" {{ 'selected' if per_page == size }}>{{ size }}</option>{% endfor %}</select></label>{% endif %}</div>
   </form>
 {% if view == 'ads' %}</details>{% else %}</section>{% endif %}

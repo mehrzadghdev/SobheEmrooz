@@ -1,7 +1,7 @@
 """Stable codes and Persian labels shared by forms, exports, and validation."""
-CATEGORIES = ('local_one', 'local_two', 'national')
-CATEGORY_LABELS = {'local_one': 'گروه اول محلی', 'local_two': 'گروه دوم محلی', 'national': 'رسانه‌های سراسری'}
-WEIGHTS = {'local_one': 25, 'local_two': 25, 'national': 50}
+CATEGORIES = ('local', 'national')
+CATEGORY_LABELS = {'local': 'رسانه‌های محلی', 'national': 'رسانه‌های سراسری'}
+WEIGHTS = {'local': 50, 'national': 50}
 ROLES = {'admin': 'مدیر سامانه', 'operator': 'کارشناس تخصیص'}
 AD_TYPES = ('ثبت شرکت', 'ثبت کل', 'دادگستری - حقوقی', 'دادگستری - کیفری', 'دولتی، سفارشی', 'متفرقه')
 PRINT_STATUSES = ('منتظر چاپ', 'چاپ شده', 'عدم چاپ', 'تایید چاپ شده', 'عدم تایید چاپ شده',
@@ -15,8 +15,8 @@ DATE_FIELDS = {'approval_date': 'تاریخ تایید آگهی', 'allocation_da
                'final_print_date': 'تاریخ چاپ نهایی', 'letter_date': 'تاریخ نامه سازمان'}
 # Ordering here is the ordering of selectable and exported columns.
 COLUMNS = {
-    'id': 'شناسه آگهی', 'subject': 'موضوع', 'subject_description': 'شرح موضوع',
-    'ma_reference': 'شماره م/الف', 'organization': 'سازمان آگهی‌دهنده', 'outlet': 'رسانه',
+    'id': 'شناسه داخلی', 'subject': 'موضوع', 'subject_description': 'شرح موضوع',
+    'ma_reference': 'شناسه آگهی', 'organization': 'سازمان آگهی‌دهنده', 'outlet': 'رسانه',
     'print_status': 'وضعیت چاپ', 'proposed_date': 'تاریخ پیشنهادی', 'final_print_date': 'تاریخ چاپ نهایی',
     'letter_number': 'شماره نامه آگهی‌دهنده', 'ad_text': 'متن آگهی', 'page_number': 'شماره صفحه',
     'box_size': 'اندازه کادر', 'headline_units': 'کادر تیتر صفحه اول', 'volume_units': 'حجم آگهی',

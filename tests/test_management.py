@@ -99,12 +99,12 @@ class MediaManagementTests(AppTestCase):
         self.assertEqual(self.client.post(f'/admin/media/{media.id}/delete').status_code,400)
 
     def test_public_media_profile_uses_selected_period_and_excludes_voided_records(self):
-        previous = self.make_period(1405,1)
+        previous = self.make_period(1404)
         self.add_ad(0,20,period=previous)
         self.add_ad(0,10)
         self.add_ad(0,80,voided_at=datetime.now())
         public = self.app.test_client()
-        result = public.get(f'/media/{self.outlets[0].id}?year=1405&half=2')
+        result = public.get(f'/media/{self.outlets[0].id}?year=1405')
         self.assertEqual(result.status_code,200)
         self.assertIn('1 آگهی',result.get_data(as_text=True))
         self.assertIn('>10 <small>کادر',result.get_data(as_text=True))
@@ -113,19 +113,19 @@ class MediaManagementTests(AppTestCase):
 class AdvertisementManagementTests(AppTestCase):
     def test_staff_listing_defaults_to_allocation_date_so_new_ads_are_visible(self):
         ad = self.add_ad()
-        result = self.client.get('/admin/advertisements?year=1405&half=2')
+        result = self.client.get('/admin/advertisements?year=1405')
         self.assertEqual(result.status_code,200)
         self.assertIn(f'/admin/advertisements/{ad.id}',result.get_data(as_text=True))
         self.assertIn('ثبت آگهی جدید',result.get_data(as_text=True))
 
     def test_edit_and_delete_actions_are_admin_only(self):
         ad = self.add_ad()
-        path='/reports?year=1405&half=2&date_field=allocation_date'
+        path='/reports?year=1405&date_field=allocation_date'
         self.assertNotIn('data-delete-ad',self.client.get(path).get_data(as_text=True))
         self.assertNotIn('data-delete-ad',self.app.test_client().get(path).get_data(as_text=True))
         self.sign_in(admin=True)
         self.assertNotIn('data-delete-ad',self.client.get(path).get_data(as_text=True))
-        html=self.client.get('/admin/advertisements?year=1405&half=2').get_data(as_text=True)
+        html=self.client.get('/admin/advertisements?year=1405').get_data(as_text=True)
         self.assertIn(f'/admin/advertisements/{ad.id}/edit',html)
         self.assertIn(f'data-delete-url="/admin/advertisements/{ad.id}/void"',html)
 

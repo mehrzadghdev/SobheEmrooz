@@ -37,11 +37,12 @@
             const prompt = installPrompt;
             installPrompt = null;
             button.disabled = true;
+            const finishLoading = window.SobheLoading?.start(button);
             try {
                 await prompt.prompt();
                 await prompt.userChoice;
             } catch (_) { /* The browser can dismiss or revoke an installation prompt. */ }
-            finally { button.disabled = false; showInstall(); }
+            finally { finishLoading?.(); button.disabled = false; showInstall(); }
         } else if (isAppleMobile && help?.showModal) {
             help.showModal();
         }
@@ -49,7 +50,10 @@
     document.querySelectorAll('[data-pwa-close]').forEach(close => {
         close.addEventListener('click', () => help?.close());
     });
-    document.querySelector('[data-pwa-retry]')?.addEventListener('click', () => location.reload());
+    document.querySelector('[data-pwa-retry]')?.addEventListener('click', event => {
+        window.SobheLoading?.start(event.currentTarget);
+        location.reload();
+    });
 
     if ('serviceWorker' in navigator && window.isSecureContext && script?.dataset.workerUrl) {
         const register = () => navigator.serviceWorker.register(script.dataset.workerUrl, {

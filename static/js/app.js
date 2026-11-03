@@ -115,7 +115,7 @@
             form.action = button.dataset.deleteUrl;
             form.elements.namedItem('version').value = button.dataset.adVersion;
             form.elements.namedItem('reason').value = '';
-            document.getElementById('ad-delete-title').textContent = `حذف آگهی م/الف ${button.dataset.adReference}`;
+            document.getElementById('ad-delete-title').textContent = `حذف آگهی با شناسه ${button.dataset.adReference}`;
             deleteDialog.showModal();
             form.elements.namedItem('reason').focus();
         }
@@ -130,7 +130,6 @@
     document.addEventListener('close', event => {
         if (event.target.id === 'ad-delete-dialog' && deleteTrigger?.isConnected) deleteTrigger.focus();
     }, true);
-    const enhancedMedia = new WeakSet();
     const enhancedReports = new WeakSet();
     function initialize() {
         const report = document.getElementById('report-filter-form');
@@ -143,19 +142,6 @@
             report.addEventListener('change', updateColumns);
             updateColumns();
         }
-        const media = document.querySelector('[data-media-form]');
-        if (!media || enhancedMedia.has(media)) return;
-        enhancedMedia.add(media);
-        const mediaType = media.elements.namedItem('media_type');
-        const localGroup = media.elements.namedItem('local_group');
-        function updateMediaType() {
-            const local = mediaType.value === 'local';
-            media.querySelector('[data-local-group]').hidden = !local;
-            localGroup.required = local;
-            localGroup.disabled = !local;
-        }
-        mediaType.addEventListener('change', updateMediaType);
-        updateMediaType();
     }
     initialize();
     document.addEventListener('sobhe:page-render', initialize);
