@@ -19,7 +19,7 @@ Open **http://127.0.0.1:5055/**. Reports are public. The administrator command p
 
 ### Page navigation and installation
 
-Internal links and page forms update the main content through `static/js/page-navigation.js`, following the adjacent **Hamyar Sakhteman** example. The header, sidebar, and selected theme stay in place. A loading bar and fade/slide show navigation progress. Animated transitions last at least 0.3 seconds; motion respects the browser's reduced-motion setting. Back/Forward restores scroll positions, and date pickers, allocation previews, dialogs, and target totals initialize for each new page. Flask renders the HTML, so direct URLs and ordinary forms also work without JavaScript.
+Internal links and page forms update the main content through `static/js/page-navigation.js`, following the adjacent **Hamyar Sakhteman** example. The header, sidebar, and selected theme stay in place. A loading bar and fade/slide show navigation progress. Animated transitions last at least 0.3 seconds; motion respects the browser's reduced-motion setting. Back/Forward restores scroll positions, and date pickers, allocation previews, dialogs, and media type fields initialize for each new page. Flask renders the HTML, so direct URLs and ordinary forms also work without JavaScript.
 
 Sign-in, sign-out, Excel exports, and attachment downloads use ordinary browser navigation. Add `data-native-navigation` to a link, form, or wrapper to opt out. Validation and stale-allocation responses display the updated form for review. Connection failures retain the current page and entered values; submitted writes are never retried automatically.
 
@@ -37,7 +37,13 @@ python -m flask --app app seed-admin
 
 This initializes the database if necessary, creates or updates username **admin** with password **123asd#**, assigns the administrator role, and activates the account. Re-running it resets that account to these credentials and invalidates its previous sessions. Other users are preserved. The password is stored as a hash and is not printed or included in the audit log.
 
-For a fresh instance, define **رسانه‌ها** and **سازمان‌ها**, then open **دوره‌ها و سهم هدف**. Create the desired Persian year/half, include each outlet in its category, set shares totaling 100% within each of the three categories, and activate the plan. Operators can then enter advertisements. An unconfigured period displays an empty public dashboard and a configuration message on entry.
+For a fresh instance, define **رسانه‌ها** and **سازمان‌ها**, then open **دوره‌ها و سهم هدف**. Select National or Local when creating each media; Local also requires one of the two local groups. Create the desired Persian year/half and activate it. Active, classified media are enrolled automatically; no per-media percentages or membership settings are required. Operators can then enter advertisements. An unconfigured period displays an empty public dashboard and a configuration message on entry.
+
+### Upgrade existing instances
+
+Back up the instance with the existing `backup` command, then run `python -m flask --app app migrate` before restarting the app. Schema version 2 adds media types and automatically fills missing memberships for active, classified media. The upgrade is transactional and repeatable; accounts, advertisements, historical period categories, and legacy share values are preserved. Legacy shares remain unused.
+
+Existing media inherit the category from their newest period membership. Media without a recorded category are marked **نیازمند تعیین نوع** in media management and stay out of new allocations until an administrator selects their type. No category is guessed. A database with advertisements missing historical period memberships is refused without changes and must have those memberships repaired first.
 
 ### Optional demonstration data
 
@@ -47,21 +53,21 @@ After migration and personal administrator creation, on a database with no outle
 python -m flask --app app demo-data
 ```
 
-This explicitly adds six illustrative outlets, three organizations, and eight advertisements totaling 1,000 boxes in the current Persian period. The dashboard marks the instance as a demonstration. The example includes M.A. 1002 with 10 boxes assigned to Sobhe Emrooz. All volumes and shares are ordinary editable records; the allocation engine has no fixed volume budget. Re-running the command or using it on an existing operational instance is refused. Use a separate `SOBHE_DATA_DIR` for demonstrations.
+This explicitly adds six illustrative outlets, three organizations, and eight advertisements totaling 1,000 boxes in the current Persian period. The dashboard marks the instance as a demonstration. The example includes M.A. 1002 with 10 boxes assigned to Sobhe Emrooz. Volumes and media types are ordinary editable records; group targets stay fixed at 25% / 25% / 50%; the allocation engine has no fixed volume budget. Re-running the command or using it on an existing operational instance is refused. Use a separate `SOBHE_DATA_DIR` for demonstrations.
 
 ## Allocation policy
 
 - Each Persian year has two independent periods: Farvardin–Shahrivar and Mehr–Esfand. **تاریخ تخصیص** determines the period and defaults to the Tehran calendar day. Approval, publication, and creation dates remain separate.
 - The two local categories each target 25% of the total recorded period volume; national media target 50%. Local category names are editable.
-- Outlet shares are percentages within their category. Each category totals 100%. Membership and shares belong to a period; creating the next plan copies the nearest preceding plan into a draft. Changes affect only the selected period.
-- Expected outlet boxes = all nonvoid period boxes × category target × outlet share. For 1,000 boxes, a 50% outlet share in a local category means **125 boxes**, even if that category actually received 300 boxes.
+- Media have a saved National or Local type, with a required subgroup for Local. New periods enroll active, classified media as a draft. Newly created or reactivated media join existing periods immediately. Type changes preserve categories in periods with any advertisement history, including voided records; other periods use the new type.
+- Expected group boxes = all nonvoid period boxes × group target. For 1,000 boxes, each local group targets **250 boxes** and national media target **500 boxes**. Individual media have no target percentages or quotas.
 - Recommendations give local media priority. If the proposed whole advertisement would push local volume above 60%, recommend national media and retain recovery mode until local share reaches 50% or below. At exactly 60% projected, local remains eligible. An empty period starts with a local recommendation and shows the initial over-quota warning.
-- Choose the local category with the greatest deficit. Within the selected category choose the lowest allocated-volume-to-share ratio, favoring outlets below their category share. Ties use the oldest latest allocation record and stable outlet ID; empty categories start with the largest share.
-- Inactive or zero-share outlets receive no automatic recommendations. An active outlet with zero share can receive an acknowledged manual allocation. Shares are never silently renormalized. Missing eligible outlets produce an explicit configuration warning and available manual choices.
-- Each M.A. advertisement stays intact on one outlet. Both administrators and operators can choose another outlet, increase volume, and proceed past current/projected quota warnings after explicit acknowledgement. These allocations immediately affect subsequent calculations.
+- Choose the local category with the greatest deficit. Within the selected group choose the active media with the lowest received volume in the period. Ties use the oldest latest allocation record and stable outlet ID.
+- Inactive or unclassified media receive no automatic recommendations. Missing active media in a group produce a configuration warning and available manual choices; that group’s target is never redistributed. Legacy individual share values have no effect on eligibility or allocation.
+- Each M.A. advertisement stays intact on one outlet. Both administrators and operators can choose another outlet, increase volume, and proceed past current/projected group-target warnings after explicit acknowledgement. These allocations immediately affect subsequent calculations.
 - Preview requests never change the database. Signed, 30-minute preview tokens bind the relevant allocation state. Saves recompute inside a serialized SQLite write transaction; stale previews require review. Audit events retain the actor, before/after values, recommendation, and accepted warnings.
 
-Box values are stored as integer hundredths, shares as basis points, and comparisons use exact fractions. Display rounding never changes a quota decision. Financial amounts are nonnegative whole **ریال**. M.A. references are positive, globally unique numeric values; Persian/Arabic digits and leading zeros normalize before uniqueness checks.
+Box values are stored as integer hundredths, and group-target comparisons use exact fractions. Display rounding never changes a quota decision. Financial amounts are nonnegative whole **ریال**. M.A. references are positive, globally unique numeric values; Persian/Arabic digits and leading zeros normalize before uniqueness checks.
 
 ## Advertisement records and reports
 
@@ -73,10 +79,10 @@ Publication and approval values are record details without an additional approva
 
 Public reports provide:
 
-- Advertisement details, outlet quotas, and organization summaries.
+- Advertisement details, group targets, media actuals, and organization summaries.
 - Date-field selection (approval by default), a maximum one-Persian-year date range, advertisement-ID and M.A. ranges, organization, letter number, province, type/status multi-selects, subject/description, outlet, advertisement text, and both amount ranges.
 - All supplied display columns, pagination, selected-column Excel export, and browser printing. Spreadsheet text is escaped against formula interpretation.
-- Clearly separated filtered results and full-period quota comparisons. A custom report can span allocation periods; outlet quotas always use the separately selected complete six-month period, with its own targets.
+- Clearly separated filtered results and full-period quota comparisons. A custom report can span allocation periods; group targets always use the separately selected complete six-month period. Media exports include actuals in the main sheet and group targets in a separate **گروه‌ها** sheet.
 
 Public reports default to approval date, so advertisements without that date do not appear until **تاریخ تخصیص** is selected. This behavior stays the same when a staff member signs in. The separate staff list at `/admin/advertisements` defaults to allocation date so newly entered records are immediately visible. Signing in opens this management list. Public dashboards and quotas include all nonvoid allocations regardless of approval or print status.
 
@@ -84,7 +90,7 @@ Navigation groups management routes first: **آگهی‌ها**, **رسانه‌�
 
 Public pages use `templates/public/` and `layouts/public.html`; management pages use `templates/admin/` and `layouts/admin.html`. Public advertisement and media profiles remain read-only even for signed-in administrators. Management links, forms, profiles, and actions use `/admin/` URLs; the earlier advertisement creation/edit/void URLs remain authenticated compatibility aliases. Voided records are only visible on the administrator detail page. Deletion removes an advertisement from public reports and quotas while retaining its M.A. reference and audit history. The **رسانه‌ها** table offers create, view, edit, and delete/archive actions. Unused media can be deleted; referenced media are archived so historical calculations remain valid.
 
-Advertisement search is a native accordion that starts closed on public and management pages. Inside it, common date, organization, and media filters appear above separate advanced-filter and table-column accordions. Active advanced filters remain open after submission. Summaries identify the selected date basis and range; organization names link to matching advertisement results while preserving filters. The public media table compares received volume and target volume in six columns, with a short expandable explanation. Accordions throughout the app share expanded-state styling, keyboard focus, chevrons, and animations that respect reduced motion.
+Advertisement search is a native accordion that starts closed on public and management pages. Inside it, common date, organization, and media filters appear above separate advanced-filter and table-column accordions. Active advanced filters remain open after submission. Summaries identify the selected date basis and range; organization names link to matching advertisement results while preserving filters. The public media table shows received volume and actual percentages in five columns. Separate summaries compare each group’s actual volume with its fixed target, with a short expandable explanation. Accordions throughout the app share expanded-state styling, keyboard focus, chevrons, and animations that respect reduced motion.
 
 One optional PDF, PNG, or JPEG file up to 10 MiB can be attached. Files live outside static assets, use generated storage keys, and download with validated content types and attachment headers. The current file of a nonvoid advertisement is publicly downloadable. Replaced files remain in storage for historical audit and backup consistency.
 
@@ -95,10 +101,10 @@ One optional PDF, PNG, or JPEG file up to 10 MiB can be attached. Files live out
 | View reports, details, and current files | Yes | Yes | Yes |
 | Create advertisements and override warnings | | Yes | Yes |
 | Edit or void saved advertisements | | | Yes |
-| Manage outlets, organizations, subjects, and period targets | | | Yes |
+| Manage media types, organizations, subjects, and periods | | | Yes |
 | Create/deactivate accounts and view audit history | | | Yes |
 
-Organizations and subjects offer delete actions: unused entries are removed, while entries referenced by any advertisement (including voided records) are archived. Empty periods can be deleted together with their targets; periods with advertisement history cannot be deleted. Unused accounts can be deleted, and accounts with advertisements or audit activity are archived with immediate session invalidation. The current account and the final active administrator are protected. These actions require administrator access and CSRF tokens, record audit events, and use accessible in-app confirmation dialogs with action-specific labels, Escape/cancel support, and focus restoration. No database migration is required.
+Organizations and subjects offer delete actions: unused entries are removed, while entries referenced by any advertisement (including voided records) are archived. Empty periods can be deleted together with their media memberships; periods with advertisement history cannot be deleted. Unused accounts can be deleted, and accounts with advertisements or audit activity are archived with immediate session invalidation. The current account and the final active administrator are protected. These actions require administrator access and CSRF tokens, record audit events, and use accessible in-app confirmation dialogs with action-specific labels, Escape/cancel support, and focus restoration. No database migration is required.
 
 Administrator corrections update the affected period totals and recovery state. Moving a record updates both periods. Voiding preserves the advertisement, reason, history, and reserved M.A. reference while removing it from public reports and quotas. Print cancellation alone does not void an allocation. Outlets already used in a period cannot be removed from that period's plan.
 
@@ -119,7 +125,7 @@ python -m flask --app app reset-password --username your-username
 | `outlet_id` | Optional manual choice; otherwise use the recommendation |
 | `exclude_id` | Administrator-only edit preview, excluding the original record |
 
-The response includes period, recommendation, current and projected selected-outlet statistics, overall local share, warnings, available outlets, and a signed preview token. Failures return a Persian JSON `error`. Entry/edit POSTs use CSRF, this token, and acknowledgement when warnings exist. No external E-Rasaneh synchronization is performed.
+The response includes period, recommendation, selected media’s actual and projected volume, overall local share, warnings, available media, and a signed preview token. `groups` maps the three category keys to their fixed `target_percent`, current/projected volume, target volume, actual percentage, and excess status. Individual media no longer expose `share_bp`, `target_share`, `target_percent`, `expected`, or individual quota/excess fields. Failures return a Persian JSON `error`. Entry/edit POSTs use CSRF, this token, and acknowledgement when warnings exist. No external E-Rasaneh synchronization is performed.
 
 ## Deployment and persistent data
 
@@ -162,7 +168,7 @@ To restore, stop all server processes, preserve the current instance as a rollba
 python scripts/run_tests.py
 ```
 
-The suite uses temporary databases and files. It covers allocation arithmetic, projected tolerance/recovery, fractional volumes, period boundaries and target isolation, overrides, concurrent M.A. submissions, stale previews/edits, authorization/CSRF/session invalidation, field round trips, report filters and exports, attachments, corrections/voiding, bootstrap, and backup readability. Node.js, if available, also checks Persian client calendar conversion. Run the application to inspect desktop/mobile layouts, light/dark mode, the date picker, and the live allocation preview.
+The suite uses temporary databases and files. It covers allocation arithmetic, projected tolerance/recovery, fractional volumes, period boundaries, automatic membership, historical categories, group targets, schema upgrades, and 1,000-media scalability, overrides, concurrent M.A. submissions, stale previews/edits, authorization/CSRF/session invalidation, field round trips, report filters and exports, attachments, corrections/voiding, bootstrap, and backup readability. Node.js, if available, also checks Persian client calendar conversion. Run the application to inspect desktop/mobile layouts, light/dark mode, the date picker, and the live allocation preview.
 
 PWA checks also verify the manifest and icon dimensions, cache allowlist, deployment prefixes, session-free offline screen, and availability before database initialization. For optional real-browser regression tests:
 

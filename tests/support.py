@@ -12,6 +12,7 @@ from sobhe import create_app
 from sobhe.commands import migrate
 from sobhe.constants import CATEGORIES
 from sobhe.models import *
+from sobhe.membership import enroll_period
 from sobhe.services import period_bounds, units
 
 
@@ -31,7 +32,8 @@ class AppTestCase(unittest.TestCase):
         migrate()
         self.admin = User(username='administrator', name='مدیر آزمایش', role='admin', active=True, password_hash=self.password_hash)
         self.operator = User(username='operator', name='کارشناس آزمایش', role='operator', active=True, password_hash=self.password_hash)
-        self.outlets = [Outlet(name=name, active=True) for name in ('صبح امروز', 'شهرآرا', 'محلی دوم', 'محلی سوم', 'خراسان', 'اطلاعات')]
+        self.outlets = [Outlet(name=name, active=True, category=CATEGORIES[index // 2])
+                        for index, name in enumerate(('صبح امروز', 'شهرآرا', 'محلی دوم', 'محلی سوم', 'خراسان', 'اطلاعات'))]
         self.organization = Organization(name='راه و شهرسازی', active=True)
         self.other_organization = Organization(name='شهرداری', active=True)
         db.session.add_all([self.admin, self.operator, self.organization, self.other_organization] + self.outlets)
@@ -51,9 +53,7 @@ class AppTestCase(unittest.TestCase):
         period = Period(year=year, half=half, active=True)
         db.session.add(period)
         db.session.flush()
-        for index, outlet in enumerate(self.outlets):
-            db.session.add(OutletTarget(period_id=period.id, outlet_id=outlet.id,
-                                         category=CATEGORIES[index // 2], share_bp=5000))
+        enroll_period(period)
         db.session.commit()
         return period
 

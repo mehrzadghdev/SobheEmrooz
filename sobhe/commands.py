@@ -16,8 +16,9 @@ from werkzeug.security import generate_password_hash
 
 from .allocations import update_recovery
 from .constants import CATEGORY_LABELS
-from .models import (Advertisement, AuditEvent, Organization, Outlet, OutletTarget, Period,
+from .models import (Advertisement, AuditEvent, Organization, Outlet, Period,
                      SchemaVersion, Setting, Subject, User, db)
+from .membership import enroll_period
 from .services import period_bounds, period_key, today
 
 
@@ -26,12 +27,40 @@ def migrate():
     if tables:
         if 'schema_version' not in tables:
             raise click.ClickException('Unversioned database; refusing to alter it. Use a new SOBHE_DATA_DIR.')
-        versions = [row.version for row in SchemaVersion.query.all()]
+        versions = [row.version for row in SchemaVersion.query.order_by(SchemaVersion.version)]
+        if versions == [1, 2]:
+            return 'Schema version 2 is already current.'
         if versions != [1]:
             raise click.ClickException('Unsupported schema version; no changes made.')
-        return 'Schema version 1 is already current.'
+        try:
+            connection = db.session.connection()
+            connection.exec_driver_sql('BEGIN IMMEDIATE')
+            # Refuse a broken legacy plan rather than omit allocations from group totals.
+            missing = connection.exec_driver_sql('''SELECT COUNT(*) FROM advertisement a
+                WHERE NOT EXISTS (SELECT 1 FROM outlet_target t
+                    WHERE t.period_id = a.period_id AND t.outlet_id = a.outlet_id)''').scalar_one()
+            if missing:
+                raise click.ClickException('Historical advertisements lack period categories; repair the legacy plan before migration.')
+            connection.exec_driver_sql("ALTER TABLE outlet ADD COLUMN category VARCHAR(20) "
+                                       "CHECK (category IN ('local_one','local_two','national'))")
+            connection.exec_driver_sql('''UPDATE outlet SET category = (
+                SELECT t.category FROM outlet_target t JOIN period p ON p.id = t.period_id
+                WHERE t.outlet_id = outlet.id ORDER BY p.year DESC, p.half DESC LIMIT 1)''')
+            connection.exec_driver_sql('''INSERT INTO outlet_target (period_id, outlet_id, category, share_bp)
+                SELECT p.id, o.id, o.category, 0 FROM period p CROSS JOIN outlet o
+                WHERE o.active = 1 AND o.category IS NOT NULL AND NOT EXISTS (
+                    SELECT 1 FROM outlet_target t WHERE t.period_id = p.id AND t.outlet_id = o.id)''')
+            connection.exec_driver_sql('UPDATE period SET revision = revision + 1')
+            db.session.add(SchemaVersion(version=2))
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            raise
+        pending = Outlet.query.filter(Outlet.category.is_(None)).count()
+        return f'Upgraded to schema version 2. Media awaiting type selection: {pending}.'
     db.create_all()
     db.session.add(SchemaVersion(version=1))
+    db.session.add(SchemaVersion(version=2))
     for key in ('local_one', 'local_two'):
         db.session.add(Setting(key='label_' + key, value=CATEGORY_LABELS[key]))
     for name in ('مناقصه', 'مزایده', 'ثبت شرکت', 'ابلاغیه قضایی', 'اطلاعیه'):
@@ -39,7 +68,7 @@ def migrate():
     db.session.commit()
     with db.engine.connect() as connection:
         connection.exec_driver_sql('PRAGMA journal_mode=WAL')
-    return 'Initialized schema version 1. Create your personal administrator with create-admin.'
+    return 'Initialized schema version 2. Create your personal administrator with create-admin.'
 
 
 def backup(destination):
@@ -77,16 +106,16 @@ def seed_demo():
     period = Period(year=year, half=half, active=True)
     db.session.add(period)
     db.session.flush()
-    specs = [('صبح امروز', 'local_one', 4000), ('شهرآرا', 'local_one', 6000),
-             ('پیام خراسان', 'local_two', 5500), ('نسیم خراسان', 'local_two', 4500),
-             ('خراسان', 'national', 6000), ('اطلاعات', 'national', 4000)]
+    specs = [('صبح امروز', 'local_one'), ('شهرآرا', 'local_one'),
+             ('پیام خراسان', 'local_two'), ('نسیم خراسان', 'local_two'),
+             ('خراسان', 'national'), ('اطلاعات', 'national')]
     outlets = []
-    for name, category, share in specs:
-        outlet = Outlet(name=name, active=True)
+    for name, category in specs:
+        outlet = Outlet(name=name, active=True, category=category)
         db.session.add(outlet)
         db.session.flush()
         outlets.append(outlet)
-        db.session.add(OutletTarget(period_id=period.id, outlet_id=outlet.id, category=category, share_bp=share))
+    enroll_period(period)
     organizations = [Organization(name=name, active=True) for name in (
         'اداره کل راه و شهرسازی خراسان رضوی', 'شهرداری مشهد', 'شرکت آب و فاضلاب خراسان رضوی')]
     db.session.add_all(organizations)
@@ -120,7 +149,7 @@ def seed_demo():
 def register_commands(app):
     @app.cli.command('migrate')
     def migrate_command():
-        """Initialize a fresh database, or verify the current schema without changes."""
+        """Initialize or transactionally upgrade the SQLite schema."""
         click.echo(migrate())
 
     @app.cli.command('seed-admin')
@@ -186,4 +215,4 @@ def register_commands(app):
     def demo_data():
         """Explicitly seed a fresh instance with illustrative 1,000-box allocations."""
         seed_demo()
-        click.echo('Created demonstration data. All volumes and media shares remain configurable.')
+        click.echo('Created demonstration data. Group targets are 25% / 25% / 50%; media types are editable.')

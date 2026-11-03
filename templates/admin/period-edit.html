@@ -1,10 +1,15 @@
 {% extends 'layouts/admin.html' %}
-{% from 'partials/back-link.html' import back_link %}{% block title %}سهم هدف {{ period.year }} | مدیریت سامانه{% endblock %}{% block content %}
+{% from 'partials/back-link.html' import back_link %}{% block title %}{{ period_label(period) }} | مدیریت سامانه{% endblock %}
+{% block content %}
 {{ back_link(url_for('web.periods'), 'بازگشت به دوره‌ها') }}
-<div class="page-heading"><div><h1>{{ period_label(period) }}</h1><p>ویرایش این برنامه فقط محاسبات همین دوره را تغییر می‌دهد. مجموع سهم رسانه‌ها در هر گروه باید ۱۰۰٪ باشد.</p></div></div>
-<form method="post" id="targets-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="revision" value="{{ period.revision }}">
-<section class="grid category-grid">{% for key in ['local_one','local_two','national'] %}<article class="card"><h3>{{ category_labels[key] }}</h3><span class="stat" data-share-total="{{ key }}">{{ share_totals[key]|boxes }}٪</span><p>جمع سهم در گروه · هدف گروه از کل {{ weights[key] }}٪</p></article>{% endfor %}</section>
-<section class="card"><div class="table-wrap"><table><thead><tr><th>حضور در برنامه</th><th>رسانه</th><th>گروه تخصیص</th><th>سهم هدف در گروه (درصد)</th></tr></thead><tbody>{% for outlet in outlets %}{% set target = targets.get(outlet.id) %}<tr data-target-row><td><input type="checkbox" name="include_{{ outlet.id }}" value="1" {{ 'checked' if target }} aria-label="حضور {{ outlet.name }} در برنامه" data-include></td><td><strong>{{ outlet.name }}</strong>{% if not outlet.active %}<small class="block danger-text">غیرفعال؛ در پیشنهادها نمایش داده نمی‌شود</small>{% endif %}</td><td><select name="category_{{ outlet.id }}" aria-label="گروه {{ outlet.name }}" data-category>{% for key,label in category_labels.items() %}<option value="{{ key }}" {{ 'selected' if target and target.category == key }}>{{ label }}</option>{% endfor %}</select></td><td><input name="share_{{ outlet.id }}" value="{{ target.share_bp|boxes if target else '0' }}" inputmode="decimal" aria-label="سهم {{ outlet.name }}" data-share></td></tr>{% else %}<tr><td colspan="4" class="empty-cell">ابتدا <a href="{{ url_for('web.catalog',kind='outlets') }}">رسانه‌ها را تعریف کنید</a>.</td></tr>{% endfor %}</tbody></table></div>
-<p class="help-text">سهم صفر، رسانه را از پیشنهاد خودکار خارج می‌کند؛ تخصیص دستی به رسانه فعال با سهم صفر همچنان با هشدار ممکن است. سهم رسانه‌های غیرفعال به‌صورت خودکار میان دیگران تقسیم نمی‌شود.</p>
-<label class="override-ack"><input type="checkbox" name="active" value="1" {{ 'checked' if period.active }}> برنامه بررسی شده و برای ثبت آگهی فعال باشد.</label><div class="actions"><button>ذخیره برنامه این دوره</button></div></section></form>
+<div class="page-heading"><div><h1>{{ period_label(period) }}</h1><p>هدف گروه‌های محلی هر کدام ۲۵٪ و گروه سراسری ۵۰٪ است. رسانه‌ها بر اساس نوع خود به‌صورت خودکار در دوره قرار می‌گیرند.</p></div></div>
+{% include 'partials/group-summary.html' %}
+{% if unclassified_count %}<div class="alert warning" role="alert">{{ unclassified_count }} رسانه هنوز نوع مشخصی ندارند و تا تعیین نوع در تخصیص‌های جدید حضور ندارند. <a href="{{ url_for('web.catalog',kind='outlets') }}">تعیین نوع رسانه‌ها</a></div>{% endif %}
+<section class="card"><h2>وضعیت دوره</h2>
+  <p>درصد یا سهمیه جداگانه‌ای برای رسانه‌ها تعیین نمی‌شود. سامانه در گروه انتخاب‌شده، رسانه دارای کمترین حجم دریافتی را پیشنهاد می‌کند.</p>
+  <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="revision" value="{{ period.revision }}">
+    <label class="override-ack"><input type="checkbox" name="active" value="1" {{ 'checked' if period.active }}> دوره برای ثبت آگهی فعال باشد.</label>
+    <div class="actions"><button>ذخیره وضعیت دوره</button><a class="button secondary" href="{{ url_for('web.catalog',kind='outlets') }}">مدیریت نوع و وضعیت رسانه‌ها</a></div>
+  </form>
+</section>
 {% endblock %}

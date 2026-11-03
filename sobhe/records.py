@@ -29,7 +29,7 @@ def values(data, existing=None):
         raise ValueError('سازمان آگهی‌دهنده فعال انتخاب کنید.')
     period = find_period(result['allocation_date'])
     if not period or not period.active:
-        raise ValueError('برنامه سهم رسانه‌ها برای دوره تاریخ تخصیص فعال نشده است.')
+        raise ValueError('دوره تاریخ تخصیص برای ثبت آگهی فعال نشده است.')
     result['period_id'] = period.id
     for key, limit in TEXT_FIELDS.items():
         result[key] = text(data.get(key))

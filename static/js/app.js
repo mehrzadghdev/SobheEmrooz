@@ -130,7 +130,7 @@
     document.addEventListener('close', event => {
         if (event.target.id === 'ad-delete-dialog' && deleteTrigger?.isConnected) deleteTrigger.focus();
     }, true);
-    const enhancedTargets = new WeakSet();
+    const enhancedMedia = new WeakSet();
     const enhancedReports = new WeakSet();
     function initialize() {
         const report = document.getElementById('report-filter-form');
@@ -143,25 +143,19 @@
             report.addEventListener('change', updateColumns);
             updateColumns();
         }
-        const targets = document.getElementById('targets-form');
-        if (!targets || enhancedTargets.has(targets)) return;
-        enhancedTargets.add(targets);
-        function updateTotals() {
-            const totals = {local_one:0,local_two:0,national:0};
-            targets.querySelectorAll('[data-target-row]').forEach(row => {
-                if (!row.querySelector('[data-include]').checked) return;
-                const raw = window.SobheDates.latin(row.querySelector('[data-share]').value).replace('٫','.');
-                totals[row.querySelector('[data-category]').value] += Math.round((Number(raw) || 0) * 100);
-            });
-            for (const [key,total] of Object.entries(totals)) {
-                const display = targets.querySelector(`[data-share-total="${key}"]`);
-                display.textContent = `${(total / 100).toLocaleString('fa-IR')}٪`;
-                display.classList.toggle('danger-text', total !== 10000);
-            }
+        const media = document.querySelector('[data-media-form]');
+        if (!media || enhancedMedia.has(media)) return;
+        enhancedMedia.add(media);
+        const mediaType = media.elements.namedItem('media_type');
+        const localGroup = media.elements.namedItem('local_group');
+        function updateMediaType() {
+            const local = mediaType.value === 'local';
+            media.querySelector('[data-local-group]').hidden = !local;
+            localGroup.required = local;
+            localGroup.disabled = !local;
         }
-        targets.addEventListener('input', updateTotals);
-        targets.addEventListener('change', updateTotals);
-        updateTotals();
+        mediaType.addEventListener('change', updateMediaType);
+        updateMediaType();
     }
     initialize();
     document.addEventListener('sobhe:page-render', initialize);

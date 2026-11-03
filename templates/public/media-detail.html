@@ -3,6 +3,6 @@
 {% block title %}{{ outlet.name }} | سهم رسانه‌ها{% endblock %}
 {% block content %}
 {{ back_link(url_for('web.reports',view='media',year=selected.year,half=selected.half), 'بازگشت به سهم رسانه‌ها') }}
-<div class="page-heading"><div><span class="eyebrow">عملکرد رسانه</span><h1>{{ outlet.name }}</h1><p>حجم دریافتی و سهم هدف رسانه در دوره انتخاب‌شده</p></div></div>
+<div class="page-heading"><div><h1>{{ outlet.name }}</h1><p>حجم دریافتی رسانه و هدف گروه آن در دوره انتخاب‌شده</p></div></div>
 {% include 'partials/media-record.html' %}
 {% endblock %}

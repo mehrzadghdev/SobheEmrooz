@@ -1,4 +1,4 @@
-"""SQLite-backed records. Box values are integer hundredths; shares are basis points."""
+"""SQLite-backed records. Box values are integer hundredths."""
 from datetime import datetime, timezone
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import CheckConstraint, UniqueConstraint
@@ -25,6 +25,9 @@ class Outlet(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(150), unique=True, nullable=False)
     active = db.Column(db.Boolean, default=True, nullable=False)
+    # NULL is reserved for legacy media awaiting explicit classification.
+    category = db.Column(db.String(20))
+    __table_args__ = (CheckConstraint("category IN ('local_one','local_two','national')"),)
 
 
 class Organization(db.Model):
@@ -46,19 +49,22 @@ class Period(db.Model):
     active = db.Column(db.Boolean, default=False, nullable=False)
     recovery = db.Column(db.Boolean, default=False, nullable=False)
     revision = db.Column(db.Integer, default=1, nullable=False)
-    targets = db.relationship('OutletTarget', back_populates='period', order_by='OutletTarget.outlet_id')
+    targets = db.relationship('OutletTarget', back_populates='period', order_by='OutletTarget.outlet_id',
+                              lazy='selectin')
     __table_args__ = (UniqueConstraint('year', 'half'), CheckConstraint('half IN (1,2)'),
                       CheckConstraint('year BETWEEN 1200 AND 1600'))
 
 
 class OutletTarget(db.Model):
+    """Automatically managed period membership; category preserves recorded history."""
     id = db.Column(db.Integer, primary_key=True)
     period_id = db.Column(db.Integer, db.ForeignKey('period.id'), nullable=False, index=True)
     outlet_id = db.Column(db.Integer, db.ForeignKey('outlet.id'), nullable=False)
     category = db.Column(db.String(20), nullable=False)
-    share_bp = db.Column(db.Integer, nullable=False)
+    # Kept for schema/audit compatibility only. Allocation never reads legacy shares.
+    share_bp = db.Column(db.Integer, default=0, nullable=False)
     period = db.relationship('Period', back_populates='targets')
-    outlet = db.relationship('Outlet')
+    outlet = db.relationship('Outlet', lazy='joined')
     __table_args__ = (UniqueConstraint('period_id', 'outlet_id'),
                       CheckConstraint("category IN ('local_one','local_two','national')"),
                       CheckConstraint('share_bp BETWEEN 0 AND 10000'))

@@ -3,6 +3,6 @@
 {% block title %}آگهی م/الف {{ ad.ma_reference }} | گزارش‌های عمومی{% endblock %}
 {% block content %}
 {{ back_link(url_for('web.reports',date_field='allocation_date',year=ad.period.year,half=ad.period.half), 'بازگشت به گزارش آگهی‌ها') }}
-<div class="page-heading"><div><span class="eyebrow">شناسه آگهی {{ ad.id }}</span><h1>آگهی م/الف {{ ad.ma_reference }}</h1><p>{{ ad.organization.name }} · {{ ad.outlet.name }}</p></div><div class="actions no-print"><button class="secondary" type="button" data-print>چاپ</button></div></div>
+<div class="page-heading"><div><h1>آگهی م/الف {{ ad.ma_reference }}</h1><p>{{ ad.organization.name }} · {{ ad.outlet.name }}</p></div><div class="actions no-print"><button class="secondary" type="button" data-print>چاپ</button></div></div>
 {% include 'partials/ad-record.html' %}
 {% endblock %}

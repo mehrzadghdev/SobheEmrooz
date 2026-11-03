@@ -3,6 +3,18 @@
 {% block title %}{{ 'ویرایش رسانه' if outlet else 'رسانه جدید' }} | سامانه آگهی‌های دولتی{% endblock %}
 {% block content %}
 {{ back_link(url_for('web.catalog',kind='outlets'), 'بازگشت به رسانه‌ها') }}
-<div class="page-heading"><div><h1>{{ 'ویرایش ' ~ outlet.name if outlet else 'رسانه جدید' }}</h1><p>گروه و درصد هدف رسانه را در برنامه هر دوره تنظیم کنید.</p></div></div>
-<section class="card"><form method="post" action="{{ url_for('web.catalog',kind='outlets') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% if outlet %}<input type="hidden" name="id" value="{{ outlet.id }}">{% endif %}<div class="fields"><div><label for="media-name">نام رسانه <span class="required-mark">*</span></label><input id="media-name" name="name" value="{{ outlet.name if outlet else '' }}" maxlength="150" required autofocus></div></div><div class="actions"><label class="inline"><input type="checkbox" name="active" value="1" {{ 'checked' if not outlet or outlet.active }}> رسانه فعال باشد</label></div><p class="help-text">رسانه غیرفعال در پیشنهادهای جدید نمایش داده نمی‌شود؛ آگهی‌ها و سهم‌های تاریخی آن باقی می‌مانند.</p><div class="actions"><button>{{ 'ذخیره تغییرات' if outlet else 'ثبت رسانه' }}</button><a class="button secondary" href="{{ url_for('web.catalog',kind='outlets') }}">انصراف</a></div></form></section>
+<div class="page-heading"><div><h1>{{ 'ویرایش ' ~ outlet.name if outlet else 'رسانه جدید' }}</h1><p>نوع رسانه را تعیین کنید؛ سهم هدف گروه آن در همه دوره‌ها خودکار اعمال می‌شود.</p></div></div>
+{% if outlet and not outlet.category %}<div class="alert warning" role="alert">نوع این رسانه هنوز مشخص نشده است. برای دریافت آگهی، نوع آن را انتخاب و ذخیره کنید.</div>{% endif %}
+<section class="card"><form method="post" action="{{ url_for('web.catalog',kind='outlets') }}" data-media-form>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% if outlet %}<input type="hidden" name="id" value="{{ outlet.id }}">{% endif %}
+  <div class="fields">
+    <div><label for="media-name">نام رسانه <span class="required-mark">*</span></label><input id="media-name" name="name" value="{{ data.get('name','') }}" maxlength="150" required autofocus></div>
+    <div><label for="media-type">نوع رسانه <span class="required-mark">*</span></label><select id="media-type" name="media_type" required><option value="">انتخاب کنید…</option><option value="national" {{ 'selected' if data.get('media_type') == 'national' }}>سراسری</option><option value="local" {{ 'selected' if data.get('media_type') == 'local' }}>محلی</option></select></div>
+    <div data-local-group><label for="media-local-group">گروه رسانه محلی <span class="required-mark">*</span></label><select id="media-local-group" name="local_group"><option value="">برای رسانه محلی انتخاب کنید…</option>{% for key in ['local_one','local_two'] %}<option value="{{ key }}" {{ 'selected' if data.get('local_group') == key }}>{{ category_labels[key] }}</option>{% endfor %}</select></div>
+  </div>
+  <div class="actions"><label class="inline"><input type="checkbox" name="active" value="1" {{ 'checked' if data.get('active') == '1' }}> رسانه فعال باشد</label></div>
+  <p class="help-text">رسانه فعال به‌صورت خودکار در دوره‌ها در دسترس قرار می‌گیرد. رسانه غیرفعال پیشنهاد نمی‌شود و سوابق آن باقی می‌مانند.</p>
+  {% if outlet %}<p class="help-text">تغییر نوع، گروه ثبت‌شده در دوره‌های دارای سابقه آگهی را تغییر نمی‌دهد؛ نوع جدید در سایر دوره‌ها اعمال می‌شود.</p>{% endif %}
+  <div class="actions"><button>{{ 'ذخیره تغییرات' if outlet else 'ثبت رسانه' }}</button><a class="button secondary" href="{{ url_for('web.catalog',kind='outlets') }}">انصراف</a></div>
+</form></section>
 {% endblock %}

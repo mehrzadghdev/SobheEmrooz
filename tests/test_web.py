@@ -228,13 +228,14 @@ class ReportTests(AppTestCase):
                      {'ad_type':'invalid'}, {'column_selection':'1'}):
             self.assertEqual(self.client.get('/reports',query_string=args).status_code,400)
 
-    def test_media_quota_ignores_organization_filters(self):
+    def test_group_targets_and_media_actuals_ignore_organization_filters(self):
         self.volumes([125,125,125,125,250,250])
         response = self.client.get('/reports',query_string={'year':1405,'half':2,'view':'media',
                                     'organization_id':self.other_organization.id,'export':'xlsx'})
         book = load_workbook(io.BytesIO(response.data))
         self.assertEqual(book.active.cell(2,3).value, '125')
-        self.assertEqual(book.active.cell(2,7).value, '125')
+        self.assertEqual(book['گروه‌ها'].cell(2,5).value, '250')
+        self.assertEqual(book.active.max_column, 5)
 
     def test_exports_escape_spreadsheet_formulas_and_html_is_escaped(self):
         self.organization.name = '=HYPERLINK("bad")'

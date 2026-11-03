@@ -2,8 +2,9 @@
 .with-sidebar { --sidebar-width:250px; --app-header-height:80px; }
 .site-header { min-height:var(--app-header-height); }
 .side-navigation .sidebar-heading { justify-content:flex-start; height:var(--app-header-height); min-height:var(--app-header-height); flex-shrink:0; padding:12px 18px; }
-.sidebar-brand { display:flex; align-items:center; justify-content:center; max-width:100%; padding:4px 8px; border-radius:6px; background:var(--primary); }
+.sidebar-brand { display:flex; align-items:center; justify-content:center; max-width:100%; padding:4px 8px; border-radius:6px; }
 .sidebar-brand img { display:block; width:120px; height:auto; max-width:100%; object-fit:contain; }
+[data-theme="dark"] .sidebar-brand { background:#fff; }
 .sidebar-toggle { display:none; align-items:center; justify-content:center; flex:0 0 36px; width:36px; height:36px; min-height:36px; padding:8px; margin-inline-start:auto; border-radius:8px; }
 .nav-ready .sidebar-toggle { display:inline-flex; }
 .side-navigation button.sidebar-toggle { background:var(--light); color:var(--muted); }

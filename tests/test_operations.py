@@ -36,7 +36,7 @@ class OperationTests(AppTestCase):
         self.assertEqual(result.exit_code, 0, result.output)
         self.assertEqual(self.client.get('/advertisements/new').status_code, 302)
 
-    def test_invalid_target_plan_cannot_be_activated(self):
+    def test_manual_media_target_submissions_are_rejected(self):
         self.sign_in(admin=True)
         data = {'revision':self.period.revision,'active':'1'}
         for target in self.period.targets:
@@ -45,34 +45,38 @@ class OperationTests(AppTestCase):
         revision = self.period.revision
         self.client.post(f'/admin/periods/{self.period.id}',data=data)
         self.assertEqual(self.period.revision, revision)
-        self.assertTrue(all(target.share_bp == 5000 for target in self.period.targets))
+        self.assertTrue(all(target.share_bp == 0 for target in self.period.targets))
 
-    def test_period_share_update_changes_only_selected_period(self):
+    def test_period_activation_changes_only_selected_period(self):
         previous = self.make_period(1405,1)
         self.sign_in(admin=True)
-        data = {'revision':self.period.revision,'active':'1'}
-        for index,target in enumerate(self.period.targets):
-            data.update({f'include_{target.outlet_id}':'1', f'category_{target.outlet_id}':target.category,
-                         f'share_{target.outlet_id}':'40' if index % 2 == 0 else '60'})
-        self.client.post(f'/admin/periods/{self.period.id}',data=data)
-        self.assertEqual([target.share_bp for target in self.period.targets], [4000,6000,4000,6000,4000,6000])
-        self.assertTrue(all(target.share_bp == 5000 for target in previous.targets))
+        revision = self.period.revision
+        self.client.post(f'/admin/periods/{self.period.id}', data={'revision':revision})
+        self.assertFalse(self.period.active)
+        self.assertTrue(previous.active)
+        self.assertEqual(self.period.revision, revision + 1)
+        self.assertEqual(len(self.period.targets),6)
 
-    def test_used_outlet_cannot_be_removed_from_period(self):
+    def test_period_update_never_removes_media_with_history(self):
         self.add_ad()
         self.sign_in(admin=True)
         revision = self.period.revision
-        self.client.post(f'/admin/periods/{self.period.id}',data={'revision':revision})
+        self.client.post(f'/admin/periods/{self.period.id}',data={'revision':revision,'active':'1'})
         self.assertEqual(len(self.period.targets),6)
-        self.assertEqual(self.period.revision,revision)
+        self.assertEqual(a.snapshot(self.period)['total'], '10')
 
-    def test_new_period_copies_nearest_previous_as_draft(self):
+    def test_new_period_enrolls_current_media_as_draft(self):
         self.sign_in(admin=True)
+        self.outlets[0].category = 'national'
+        self.outlets[1].active = False
+        db.session.commit()
         response = self.client.post('/admin/periods',data={'year':'1406','half':'1'})
         self.assertEqual(response.status_code,302)
         period = Period.query.filter_by(year=1406,half=1).one()
         self.assertFalse(period.active)
-        self.assertEqual([target.share_bp for target in period.targets],[5000]*6)
+        self.assertEqual(len(period.targets),5)
+        self.assertTrue(all(target.share_bp == 0 for target in period.targets))
+        self.assertEqual(period.targets[0].category, 'national')
 
     def test_stale_target_revision_prevents_advertisement_save(self):
         data = self.data()

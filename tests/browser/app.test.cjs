@@ -139,6 +139,10 @@ test('forms loaded through navigation retain allocation previews, review stale t
     assert.equal(previewResponse.status(), 200, await previewResponse.text());
     await expect(page.locator('#preview-token')).not.toHaveValue('');
     await expect(page.locator('#save-ad')).toBeEnabled();
+    const initialData = await previewResponse.json();
+    await expect(page.locator('#selected-group-target')).toContainText(`${initialData.groups[initialData.selected.category].target_percent}٪`);
+    await expect(page.locator('#selected-group-projected')).not.toHaveText('—');
+    await expect(page.locator('#recommended-target')).toHaveCount(0);
     await page.evaluate(() => { document.getElementById('preview-token').value = 'stale-preview'; });
     if (await page.locator('#override-label').isVisible()) await page.locator('#override-confirmed').check();
     const stale = page.waitForResponse(response => response.url().endsWith('/advertisements/new') && response.request().method() === 'POST');
@@ -172,7 +176,7 @@ test('forms loaded through navigation retain allocation previews, review stale t
     await expectShell();
 });
 
-test('history restores scroll and delegated dialogs and target totals survive navigation', async () => {
+test('history restores scroll and delegated dialogs and group targets survive navigation', async () => {
     await login();
     await markShell();
     await navigateByLink('.sidebar-links a[href="/admin/advertisements"]', '/admin/advertisements');
@@ -196,8 +200,9 @@ test('history restores scroll and delegated dialogs and target totals survive na
     await page.goForward();
     await page.waitForURL('/admin/periods');
     await navigateByLink('a[href="/admin/periods/1"]', '/admin/periods/1');
-    await page.locator('[name="share_1"]').fill('40');
-    await expect(page.locator('[data-share-total="local_one"]')).toHaveText('۹۰٪');
+    await expect(page.locator('[name^="share_"]')).toHaveCount(0);
+    await expect(page.locator('[data-group-target="local_one"]')).toHaveText('هدف 25٪');
+    await expect(page.locator('[data-group-target="national"]')).toHaveText('هدف 50٪');
     await expectShell();
 });
 
@@ -380,7 +385,7 @@ test('admin and public pages stay separate through navigation, history, and them
     await expect(page.locator('#main-content a[href$="/edit"]')).toBeVisible();
     await expect(page.locator('.admin-navigation [aria-current="page"]')).toHaveText('رسانه‌ها');
     await navigateByLink('.sidebar-links a[href="/reports?view=media"]', '/reports?view=media');
-    await expect(page.locator('.media-share-table thead th')).toHaveCount(6);
+    await expect(page.locator('.media-share-table thead th')).toHaveCount(5);
     await capture('media-shares');
     await navigateByLink('.media-share-table tbody a', /\/media\/\d+\?/);
     await expect(page.locator('#main-content a[href^="/admin/"], #main-content [data-delete-ad]')).toHaveCount(0);
@@ -421,6 +426,76 @@ test('direct routes and GET and POST forms still work without JavaScript', async
     } finally { await nativeContext.close(); }
 });
 
+test('media type controls require local groups and periods use automatic memberships', async () => {
+    await login();
+    await markShell();
+    await navigateByLink('.sidebar-links a[href="/admin/catalog/outlets"]', '/admin/catalog/outlets');
+    const names = ['رسانه محلی اول مرورگر', 'رسانه محلی دوم مرورگر', 'رسانه سراسری مرورگر'];
+    for (const [index, group] of ['local_one', 'local_two', 'national'].entries()) {
+        await navigateByLink('a[href="/admin/media/new"]', '/admin/media/new');
+        await expect(page.locator('#media-type')).toHaveValue('');
+        await page.locator('#media-name').fill(names[index]);
+        await page.locator('#media-type').selectOption(group === 'national' ? 'national' : 'local');
+        if (group === 'national') {
+            await expect(page.locator('#media-local-group')).toBeHidden();
+            await expect(page.locator('#media-local-group')).toBeDisabled();
+        } else {
+            await expect(page.locator('#media-local-group')).toBeVisible();
+            assert.equal(await page.locator('#media-local-group').evaluate(node => node.required), true);
+            await page.locator('[data-media-form] button[type="submit"], [data-media-form] button:not([type])').click();
+            await expect(page).toHaveURL(/\/admin\/media\/new$/);
+            await page.locator('#media-local-group').selectOption(group);
+        }
+        if (index === 0) await capture('media-type-local');
+        await page.locator('[data-media-form] button[type="submit"], [data-media-form] button:not([type])').click();
+        await page.waitForURL('/admin/catalog/outlets');
+        const row = page.locator('tbody tr').filter({hasText:names[index]});
+        await expect(row).toHaveCount(1);
+        const preview = await context.request.get('/api/allocation-preview?allocation_date=2026-10-01&volume=1');
+        assert.equal(preview.status(), 200);
+        assert.ok((await preview.json()).options.some(option => option.name === names[index] && option.category === group));
+    }
+    await expectShell();
+    await navigateByLink('.sidebar-links a[href="/admin/periods"]', '/admin/periods');
+    await page.locator('#new-year').fill('1407');
+    await page.locator('#new-half').selectOption('1');
+    await page.getByRole('button', {name:'ایجاد دوره',exact:true}).click();
+    await page.waitForURL(/\/admin\/periods\/\d+$/);
+    await expect(page.locator('[data-group-target]')).toHaveText(['هدف 25٪','هدف 25٪','هدف 50٪']);
+    await expect(page.locator('[name^="share_"], [name^="category_"], [name^="include_"]')).toHaveCount(0);
+    await page.locator('[name="active"]').check();
+    await page.getByRole('button', {name:'ذخیره وضعیت دوره',exact:true}).click();
+    await expect(page.locator('.alert.success')).toContainText('وضعیت دوره ذخیره شد');
+    await capture('automatic-period-groups');
+    await page.setViewportSize({width:390,height:844});
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await capture('automatic-period-mobile');
+});
+
+test('media type validation also works without JavaScript', async () => {
+    const nativeContext = await browser.newContext({baseURL,javaScriptEnabled:false});
+    try {
+        const native = await nativeContext.newPage();
+        await native.goto('/login');
+        await native.locator('#username').fill('administrator');
+        await native.locator('#password').fill('test-password-123');
+        await native.locator('.auth form button').click();
+        await native.waitForURL('/admin/advertisements');
+        await native.goto('/admin/media/new');
+        await native.locator('#media-name').fill('رسانه بدون جاوااسکریپت');
+        await native.locator('#media-type').selectOption('local');
+        const rejected = native.waitForResponse(response => response.request().method() === 'POST' && response.url().endsWith('/admin/catalog/outlets'));
+        await native.locator('[data-media-form] button').click();
+        assert.equal((await rejected).status(),400);
+        await expect(native.locator('#media-name')).toHaveValue('رسانه بدون جاوااسکریپت');
+        await expect(native.locator('#media-type')).toHaveValue('local');
+        await native.locator('#media-local-group').selectOption('local_two');
+        await native.locator('[data-media-form] button').click();
+        await native.waitForURL('/admin/catalog/outlets');
+        await expect(native.locator('tbody tr').filter({hasText:'رسانه بدون جاوااسکریپت'})).toContainText('گروه دوم محلی');
+    } finally { await nativeContext.close(); }
+});
+
 test('entity delete actions confirm removal and archive referenced organizations', async () => {
     await login();
     await navigateByLink('.sidebar-links a[href="/admin/catalog/organizations"]', '/admin/catalog/organizations');
@@ -447,7 +522,7 @@ test('entity delete actions confirm removal and archive referenced organizations
     await navigateByLink('.sidebar-links a[href="/admin/periods"]', '/admin/periods');
     await page.locator('#new-year').fill('1406');
     await page.locator('#new-half').selectOption('1');
-    await page.getByRole('button', {name: 'ایجاد و تنظیم سهم‌ها', exact: true}).click();
+    await page.getByRole('button', {name: 'ایجاد دوره', exact: true}).click();
     await page.waitForURL(/\/admin\/periods\/\d+$/);
     await navigateByLink('a[href="/admin/periods"]', '/admin/periods');
     const periodRow = page.locator('tbody tr').filter({hasText: '1406'});

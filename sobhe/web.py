@@ -9,7 +9,7 @@ from flask import (Blueprint, abort, current_app, flash, g, jsonify, redirect, r
                    request, send_file, session, url_for)
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
-from sqlalchemy import func, or_
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import joinedload
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -18,6 +18,7 @@ from . import allocations as a
 from . import records as r
 from . import reports as report
 from . import services as s
+from .membership import enroll_period, sync_outlet
 from .constants import CATEGORIES, COLUMNS, ROLES
 from .models import (Advertisement, AuditEvent, Organization, Outlet, OutletTarget,
                      Period, Setting, Subject, User, db, now)
@@ -116,10 +117,15 @@ def report_page(management=False):
     ).group_by(Organization.id, Organization.name).order_by(func.sum(Advertisement.volume_units).desc()).all()
     if request.args.get('export') == 'xlsx':
         if view == 'media':
-            headers = ['رسانه', 'گروه', 'کادر تخصیص‌یافته', 'درصد کل واقعی', 'درصد هدف کل', 'سهم هدف در گروه', 'سهمیه کادر', 'وضعیت']
+            headers = ['رسانه', 'گروه', 'حجم دریافتی (کادر)', 'درصد واقعی از کل', 'درصد واقعی در گروه']
             labels = s.category_labels()
-            data = [[row['name'], labels[row['category']], row['allocated'], row['actual_percent'], row['target_percent'],
-                     row['target_share'], row['expected'], 'عبور از سهمیه' if row['exceeded'] else 'در محدوده سهمیه'] for row in state['rows']]
+            data = [[row['name'], labels[row['category']], row['allocated'], row['actual_percent'],
+                     row['category_percent']] for row in state['rows']]
+            group_headers = ['گروه', 'هدف از کل (درصد)', 'حجم دریافتی (کادر)', 'درصد واقعی از کل', 'حجم هدف (کادر)', 'وضعیت گروه']
+            group_data = [[labels[key], group['target_percent'], group['allocated'], group['actual_percent'],
+                           group['expected'], 'بیشتر از هدف گروه' if group['exceeded'] else 'در محدوده هدف گروه']
+                          for key, group in state['groups'].items()]
+            return spreadsheet(headers, data, extra_sheets=[('گروه‌ها', group_headers, group_data)])
         elif view == 'organizations':
             headers = ['سازمان آگهی‌دهنده', 'تعداد آگهی', 'حجم آگهی (کادر)', 'مبلغ آگهی (ریال)']
             data = [[row.name, row.count, s.boxes(row.volume), row.amount] for row in organizations]
@@ -146,22 +152,24 @@ def report_page(management=False):
                            subjects=Subject.query.order_by(Subject.name).all())
 
 
-def spreadsheet(headers, rows):
+def spreadsheet(headers, rows, *, extra_sheets=()):
     book = Workbook()
     sheet = book.active
     sheet.title = 'گزارش آگهی'
-    sheet.sheet_view.rightToLeft = True
-    sheet.append(headers)
-    for cell in sheet[1]:
-        cell.font = Font(color='FFFFFF', bold=True)
-        cell.fill = PatternFill('solid', fgColor='DA1214')
-    for row in rows:
-        sheet.append(["'" + value if isinstance(value, str) and value.lstrip().startswith(('=', '+', '-', '@')) else value
-                      for value in row])
-    sheet.freeze_panes = 'A2'
-    sheet.auto_filter.ref = sheet.dimensions
-    for column in sheet.columns:
-        sheet.column_dimensions[column[0].column_letter].width = min(45, max(14, len(str(column[0].value)) + 3))
+    sheets = [(sheet, headers, rows)] + [(book.create_sheet(title), labels, values) for title, labels, values in extra_sheets]
+    for sheet, labels, values in sheets:
+        sheet.sheet_view.rightToLeft = True
+        sheet.append(labels)
+        for cell in sheet[1]:
+            cell.font = Font(color='FFFFFF', bold=True)
+            cell.fill = PatternFill('solid', fgColor='DA1214')
+        for row in values:
+            sheet.append(["'" + value if isinstance(value, str) and value.lstrip().startswith(('=', '+', '-', '@')) else value
+                          for value in row])
+        sheet.freeze_panes = 'A2'
+        sheet.auto_filter.ref = sheet.dimensions
+        for column in sheet.columns:
+            sheet.column_dimensions[column[0].column_letter].width = min(45, max(14, len(str(column[0].value)) + 3))
     output = io.BytesIO()
     book.save(output)
     output.seek(0)
@@ -335,7 +343,8 @@ def advertisement_detail(ad_id, management=False):
     state = a.snapshot(ad.period)
     outlet_stats = next((row for row in state['rows'] if row['outlet_id'] == ad.outlet_id), None)
     return render_template('admin/ad-detail.html' if management else 'public/ad-detail.html',
-                           ad=ad, stats=outlet_stats)
+                           ad=ad, stats=outlet_stats,
+                           group=state['groups'][outlet_stats['category']] if outlet_stats else None)
 
 
 @bp.route('/advertisements/<int:ad_id>/file')
@@ -386,24 +395,36 @@ def catalog(kind):
         abort(404)
     model, title = CATALOGS[kind]
     if request.method == 'POST':
+        row_id = None
         try:
             row_id = s.integer(request.form.get('id'), 1, optional=True)
             row = db.get_or_404(model, row_id) if row_id else model()
             before = {'name': row.name, 'active': row.active} if row_id else None
+            if kind == 'outlets':
+                if before:
+                    before['category'] = row.category
+                media_type = request.form.get('media_type')
+                category = 'national' if media_type == 'national' else request.form.get('local_group')
+                if media_type not in ('national', 'local') or category not in CATEGORIES or (media_type == 'local' and category == 'national'):
+                    raise ValueError('نوع رسانه و برای رسانه محلی، یکی از دو گروه محلی را انتخاب کنید.')
+                row.category = category
             row.name = s.required(request.form, 'name', 150 if kind != 'organizations' else 200)
             row.active = request.form.get('active') == '1'
             db.session.add(row)
             db.session.flush()
             if kind == 'outlets':
-                for period in Period.query.join(OutletTarget).filter(OutletTarget.outlet_id == row.id).all():
-                    period.revision += 1
+                membership = sync_outlet(row)
             s.audit('catalog_update' if row_id else 'catalog_create', f'{kind}:{row.id}',
-                    {'before': before, 'name': row.name, 'active': row.active})
+                    {'before': before, 'name': row.name, 'active': row.active,
+                     **({'category': row.category, 'membership': membership} if kind == 'outlets' else {})})
             db.session.commit()
             flash('اطلاعات ذخیره شد.', 'success')
         except (ValueError, IntegrityError) as error:
             db.session.rollback()
             flash(str(error) if isinstance(error, ValueError) else 'این نام قبلاً ثبت شده است.', 'danger')
+            if kind == 'outlets':
+                return render_template('admin/media-form.html', outlet=db.session.get(Outlet, row_id) if row_id else None,
+                                       data=request.form), 400
         return redirect(url_for('web.catalog', kind=kind))
     rows = model.query.order_by(model.name).all()
     if kind == 'outlets':
@@ -442,7 +463,10 @@ def catalog_delete(kind, row_id):
 @access(admin=True)
 def media_form(outlet_id):
     outlet = db.get_or_404(Outlet, outlet_id) if outlet_id else None
-    return render_template('admin/media-form.html', outlet=outlet)
+    return render_template('admin/media-form.html', outlet=outlet, data={
+        'name': outlet.name if outlet else '', 'active': '1' if not outlet or outlet.active else '',
+        'media_type': ('national' if outlet.category == 'national' else 'local') if outlet and outlet.category else '',
+        'local_group': outlet.category if outlet and outlet.category != 'national' else ''})
 
 
 @bp.route('/media/<int:outlet_id>')
@@ -467,6 +491,7 @@ def outlet_detail(outlet_id, management=False):
     query = Advertisement.query.filter_by(outlet_id=outlet.id, period_id=period.id if period else None).filter(Advertisement.voided_at.is_(None))
     return render_template('admin/media-detail.html' if management else 'public/media-detail.html',
                            management=management, outlet=outlet, stats=stats, selected=selected,
+                           group=state['groups'][stats['category']] if stats else None,
                            ad_count=query.count(), recent=query.order_by(Advertisement.id.desc()).limit(10).all())
 
 
@@ -474,7 +499,7 @@ def outlet_detail(outlet_id, management=False):
 @access(admin=True)
 def media_delete(outlet_id):
     outlet = db.get_or_404(Outlet, outlet_id)
-    before = {'id': outlet.id, 'name': outlet.name, 'active': outlet.active}
+    before = {'id': outlet.id, 'name': outlet.name, 'active': outlet.active, 'category': outlet.category}
     referenced = Advertisement.query.filter_by(outlet_id=outlet.id).first() or OutletTarget.query.filter_by(outlet_id=outlet.id).first()
     if referenced:
         outlet.active = False
@@ -501,13 +526,8 @@ def periods():
             period = Period(year=year, half=half)
             db.session.add(period)
             db.session.flush()
-            previous = Period.query.filter(or_(Period.year < year, (Period.year == year) & (Period.half < half))).order_by(
-                Period.year.desc(), Period.half.desc()).first()
-            if previous:
-                for target in previous.targets:
-                    db.session.add(OutletTarget(period_id=period.id, outlet_id=target.outlet_id,
-                                                 category=target.category, share_bp=target.share_bp))
-            s.audit('period_create', f'period:{period.id}', {'year': year, 'half': half, 'copied_from': previous.id if previous else None})
+            count = enroll_period(period)
+            s.audit('period_create', f'period:{period.id}', {'year': year, 'half': half, 'media_count': count})
             db.session.commit()
             return redirect(url_for('web.period_edit', period_id=period.id))
         except (ValueError, IntegrityError) as error:
@@ -529,7 +549,7 @@ def period_delete(period_id):
             raise ValueError('دوره دارای سابقه آگهی قابل حذف نیست.')
         before = {'id': period.id, 'year': period.year, 'half': period.half,
                   'active': period.active, 'revision': period.revision,
-                  'targets': [{'outlet_id': target.outlet_id, 'category': target.category, 'share_bp': target.share_bp}
+                  'members': [{'outlet_id': target.outlet_id, 'category': target.category}
                               for target in period.targets]}
         for target in list(period.targets):
             db.session.delete(target)
@@ -537,7 +557,7 @@ def period_delete(period_id):
         s.audit('period_delete', f'period:{period.id}', {'before': before})
         db.session.delete(period)
         db.session.commit()
-        flash('دوره و برنامه سهم رسانه‌های آن حذف شدند.', 'success')
+        flash('دوره و عضویت رسانه‌های آن حذف شدند.', 'success')
     except ValueError as error:
         db.session.rollback()
         flash(str(error), 'danger')
@@ -552,49 +572,20 @@ def period_edit(period_id):
         try:
             if s.integer(request.form.get('revision'), 1) != period.revision:
                 raise ValueError('برنامه دوره تغییر کرده است؛ صفحه را تازه کنید.')
-            proposed = []
-            for outlet in Outlet.query.all():
-                if request.form.get(f'include_{outlet.id}') != '1':
-                    continue
-                category = request.form.get(f'category_{outlet.id}')
-                if category not in CATEGORIES:
-                    raise ValueError('گروه رسانه معتبر نیست.')
-                share = s.units(request.form.get(f'share_{outlet.id}'))
-                if share > 10000:
-                    raise ValueError('سهم رسانه نمی‌تواند بیشتر از ۱۰۰ درصد باشد.')
-                proposed.append(SimpleNamespace(outlet_id=outlet.id, category=category, share_bp=share))
-            used = {row[0] for row in db.session.query(Advertisement.outlet_id).filter_by(period_id=period.id).distinct()}
-            if not used.issubset({target.outlet_id for target in proposed}):
-                raise ValueError('رسانه دارای سابقه آگهی در این دوره قابل حذف از برنامه نیست؛ سهم آن را تغییر دهید.')
-            active = request.form.get('active') == '1'
-            if active or used:
-                a.validate_targets(proposed)
-            before = [(target.outlet_id, target.category, target.share_bp) for target in period.targets]
-            existing = {target.outlet_id: target for target in period.targets}
-            for target in proposed:
-                row = existing.pop(target.outlet_id, None)
-                if row is None:
-                    row = OutletTarget(period_id=period.id, outlet_id=target.outlet_id)
-                    db.session.add(row)
-                row.category, row.share_bp = target.category, target.share_bp
-            for row in existing.values():
-                db.session.delete(row)
-            period.active = active
-            db.session.flush()
-            db.session.expire(period, ['targets'])
+            if any(key.startswith(('include_', 'category_', 'share_')) for key in request.form):
+                raise ValueError('نوع رسانه در بخش رسانه‌ها تعیین می‌شود؛ سهم هدف فقط برای گروه‌ها و ثابت است.')
+            before = period.active
+            period.active = request.form.get('active') == '1'
             a.update_recovery(period)
-            s.audit('period_targets_update', f'period:{period.id}', {'before': before,
-                    'after': [(t.outlet_id, t.category, t.share_bp) for t in period.targets], 'active': active})
+            s.audit('period_update', f'period:{period.id}', {'before_active': before, 'active': period.active})
             db.session.commit()
-            flash('سهم‌های همین دوره ذخیره و محاسبات به‌روز شد.', 'success')
+            flash('وضعیت دوره ذخیره شد؛ سهم گروه‌ها به‌صورت خودکار اعمال می‌شود.', 'success')
         except (ValueError, IntegrityError) as error:
             db.session.rollback()
             flash(str(error) if isinstance(error, ValueError) else 'برنامه ذخیره نشد؛ دوباره بررسی کنید.', 'danger')
         return redirect(url_for('web.period_edit', period_id=period_id))
-    targets = {target.outlet_id: target for target in period.targets}
-    totals = {key: sum(t.share_bp for t in targets.values() if t.category == key) for key in CATEGORIES}
-    return render_template('admin/period-edit.html', period=period, targets=targets, share_totals=totals,
-                           outlets=Outlet.query.order_by(Outlet.name).all())
+    return render_template('admin/period-edit.html', period=period, state=a.snapshot(period),
+                           unclassified_count=Outlet.query.filter(Outlet.category.is_(None)).count())
 
 
 @bp.route('/admin/category-labels', methods=['POST'])

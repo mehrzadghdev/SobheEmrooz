@@ -69,7 +69,7 @@ class EntityDeletionTests(AppTestCase):
         self.assertEqual(OutletTarget.query.filter_by(period_id=other.id).count(), 6)
         self.assertEqual(Outlet.query.count(), 6)
         event = AuditEvent.query.filter_by(action='period_delete').one()
-        self.assertEqual(len(json.loads(event.detail)['before']['targets']), 6)
+        self.assertEqual(len(json.loads(event.detail)['before']['members']), 6)
 
     def test_periods_with_ads_and_stale_period_deletions_are_rejected(self):
         ad = self.add_ad()

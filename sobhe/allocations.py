@@ -1,4 +1,4 @@
-"""Period-wide arithmetic and deterministic, advisory recommendations."""
+"""Group-wide arithmetic and deterministic, advisory media recommendations."""
 import hashlib
 import json
 from fractions import Fraction
@@ -8,7 +8,7 @@ from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from sqlalchemy import func
 from .constants import CATEGORIES, WEIGHTS
 from .models import Advertisement, Period, db
-from .services import boxes, quota_boxes, decimal_string, period_key
+from .services import boxes, quota_boxes, decimal_string, period_key, category_labels
 
 
 def find_period(value):
@@ -16,10 +16,14 @@ def find_period(value):
     return Period.query.filter_by(year=year, half=half).first()
 
 
-def validate_targets(targets):
-    for category in CATEGORIES:
-        if sum(target.share_bp for target in targets if target.category == category) != 10000:
-            raise ValueError('جمع سهم رسانه‌ها در هر یک از سه گروه باید دقیقاً ۱۰۰ درصد باشد.')
+def group_stats(category, amount, total):
+    expected = Fraction(total * WEIGHTS[category], 100)
+    return {'category': category, 'target_percent': WEIGHTS[category],
+            'allocated_units': amount, 'allocated': boxes(amount),
+            'actual_percent': decimal_string(Fraction(amount * 100, total)) if total else '0',
+            'expected_units': expected, 'expected': quota_boxes(expected),
+            'headroom': quota_boxes(max(0, expected - amount)),
+            'exceeded': amount > expected, 'excess': quota_boxes(max(0, amount - expected))}
 
 
 def snapshot(period, *, exclude_id=None):
@@ -34,23 +38,22 @@ def snapshot(period, *, exclude_id=None):
                       for key in CATEGORIES}
     total = sum(category_units.values())
     result = {'total_units': total, 'total': boxes(total), 'categories': category_units,
+              'groups': {key: group_stats(key, category_units[key], total) for key in CATEGORIES},
               'local_units': category_units['local_one'] + category_units['local_two'],
               'rows': [], 'targets': targets, 'period': period}
     for target in targets:
         amount, last = allocated.get(target.outlet_id, (0, 0))
         category_total = category_units[target.category]
-        expected = Fraction(total * WEIGHTS[target.category] * target.share_bp, 100 * 10000)
         result['rows'].append({
             'outlet_id': target.outlet_id, 'name': target.outlet.name, 'category': target.category,
-            'share_bp': target.share_bp, 'active': target.outlet.active,
+            'active': target.outlet.active and target.outlet.category in CATEGORIES,
             'allocated_units': amount, 'allocated': boxes(amount), 'last': last,
             'actual_percent': decimal_string(Fraction(amount * 100, total)) if total else '0',
             'category_percent': decimal_string(Fraction(amount * 100, category_total)) if category_total else '0',
-            'target_percent': decimal_string(Fraction(WEIGHTS[target.category] * target.share_bp, 10000)),
-            'target_share': decimal_string(Fraction(target.share_bp, 100)),
-            'expected_units': expected, 'expected': quota_boxes(expected), 'headroom': quota_boxes(max(0, expected - amount)),
-            'exceeded': amount > expected, 'excess': quota_boxes(max(0, amount - expected)),
         })
+    for key, group in result['groups'].items():
+        group['media_count'] = sum(row['category'] == key for row in result['rows'])
+        group['active_count'] = sum(row['category'] == key and row['active'] for row in result['rows'])
     result['local_percent'] = decimal_string(Fraction(result['local_units'] * 100, total)) if total else '0'
     result['national_percent'] = decimal_string(Fraction(category_units['national'] * 100, total)) if total else '0'
     return result
@@ -60,7 +63,6 @@ def recommend(state, volume_units):
     total, local = state['total_units'], state['local_units']
     period = state['period']
     recovery = bool(period and period.recovery)
-    # Manual changes may already have crossed a threshold since the prior mode.
     if not total or 2 * local <= total:
         recovery = False
     elif 5 * local > 3 * total:
@@ -68,18 +70,13 @@ def recommend(state, volume_units):
     if total and not recovery and 5 * (local + volume_units) > 3 * (total + volume_units):
         recovery = True
     categories = ['national'] if recovery else ['local_one', 'local_two']
-    eligible = [row for row in state['rows'] if row['active'] and row['share_bp'] > 0]
+    eligible = [row for row in state['rows'] if row['active']]
     categories.sort(key=lambda key: (-(Fraction(total * WEIGHTS[key], 100) - state['categories'][key]), key))
     for category in categories:
         candidates = [row for row in eligible if row['category'] == category]
-        if not candidates:
-            continue
-        if not state['categories'][category]:
-            chosen = min(candidates, key=lambda row: (-row['share_bp'], row['outlet_id']))
-        else:
-            chosen = min(candidates, key=lambda row: (Fraction(row['allocated_units'], row['share_bp']),
-                                                       row['last'] or 0, row['outlet_id']))
-        return chosen, recovery
+        if candidates:
+            chosen = min(candidates, key=lambda row: (row['allocated_units'], row['last'] or 0, row['outlet_id']))
+            return chosen, recovery
     return None, recovery
 
 
@@ -89,8 +86,7 @@ def public_row(row):
 
 def preview(period, volume_units, selected_id=None, *, exclude_id=None, record_version=None):
     if not period or not period.active:
-        raise ValueError('ابتدا مدیر باید برنامه سهم رسانه‌ها را برای این دوره فعال کند.')
-    validate_targets(period.targets)
+        raise ValueError('ابتدا مدیر باید این دوره را برای ثبت آگهی فعال کند.')
     state = snapshot(period, exclude_id=exclude_id)
     recommended, recovery = recommend(state, volume_units)
     selected_id = selected_id or (recommended['outlet_id'] if recommended else None)
@@ -99,27 +95,34 @@ def preview(period, volume_units, selected_id=None, *, exclude_id=None, record_v
     selected = next((row for row in state['rows'] if row['outlet_id'] == selected_id
                      and (row['active'] or row['outlet_id'] == retained_id)), None)
     if selected_id and selected is None:
-        raise ValueError('رسانه انتخاب‌شده فعال نیست یا در برنامه این دوره وجود ندارد.')
-    warnings = []
+        raise ValueError('رسانه انتخاب‌شده فعال نیست یا در این دوره وجود ندارد.')
+    labels = category_labels()
+    warnings = [f'گروه {labels[key]} رسانه فعال ندارد؛ سهم هدف این گروه بین گروه‌های دیگر تقسیم نمی‌شود.'
+                for key, group in state['groups'].items() if not group['active_count']]
     if not recommended:
-        warnings.append('در گروه موردنیاز رسانه واجد سهم فعال وجود ندارد؛ تنظیمات دوره را بررسی کنید.')
+        warnings.append('در گروه موردنیاز رسانه فعال وجود ندارد؛ نوع و وضعیت رسانه‌ها را بررسی کنید.')
     if selected and recommended and selected_id != recommended['outlet_id']:
         warnings.append('رسانه انتخاب‌شده با پیشنهاد سامانه متفاوت است؛ تخصیص دستی ثبت خواهد شد.')
-    total_after = state['total_units'] + volume_units
+    total_after = state['total_units'] + (volume_units if selected else 0)
+    groups = {}
+    for key, group in state['groups'].items():
+        after = group['allocated_units'] + (volume_units if selected and selected['category'] == key else 0)
+        projected = group_stats(key, after, total_after)
+        groups[key] = public_row(group)
+        groups[key].update({f'projected_{name}': value for name, value in public_row(projected).items()
+                            if name not in ('category', 'target_percent')})
     selected_data = public_row(selected) if selected else None
     if selected:
-        expected = Fraction(total_after * WEIGHTS[selected['category']] * selected['share_bp'], 100 * 10000)
+        group = groups[selected['category']]
         after = selected['allocated_units'] + volume_units
-        if selected['exceeded']:
-            warnings.append(f'رسانه {selected["name"]} در حال حاضر از سهمیه دوره عبور کرده است.')
-        if after > expected:
-            warnings.append(f'با این تخصیص، رسانه {selected["name"]} از سهمیه عبور می‌کند: '
-                            f'{boxes(after)} کادر در برابر سهمیه {quota_boxes(expected)} کادر.')
-        category_after = state['categories'][selected['category']] + volume_units
-        selected_data.update(projected_allocated=boxes(after), projected_expected=quota_boxes(expected),
+        if group['exceeded']:
+            warnings.append(f'گروه {labels[selected["category"]]} در حال حاضر از سهم هدف دوره عبور کرده است.')
+        if group['projected_exceeded']:
+            warnings.append(f'با این تخصیص، گروه {labels[selected["category"]]} از سهم هدف عبور می‌کند: '
+                            f'{group["projected_allocated"]} کادر در برابر هدف {group["projected_expected"]} کادر.')
+        selected_data.update(projected_allocated=boxes(after),
                              projected_percent=decimal_string(Fraction(after * 100, total_after)),
-                             projected_category_percent=decimal_string(Fraction(after * 100, category_after)),
-                             projected_exceeded=after > expected)
+                             projected_category_percent=decimal_string(Fraction(after * 100, group['projected_allocated_units'])))
     local_after = state['local_units'] + (volume_units if selected and selected['category'] != 'national' else 0)
     if selected and 5 * local_after > 3 * total_after:
         warnings.append('سهم محلی پس از تخصیص از سقف ترجیحی ۶۰ درصد عبور می‌کند؛ پیشنهادهای بعدی به سمت سراسری می‌رود.')
@@ -128,18 +131,18 @@ def preview(period, volume_units, selected_id=None, *, exclude_id=None, record_v
         'selected': selected_id, 'excluded': exclude_id, 'record_version': record_version,
         'total': state['total_units'], 'local': state['local_units'], 'recovery': period.recovery,
         'recommended': recommended['outlet_id'] if recommended else None,
-        'rows': [(r['outlet_id'], r['category'], r['share_bp'], r['active'], r['allocated_units']) for r in state['rows']],
+        'rows': [(r['outlet_id'], r['category'], r['active'], r['allocated_units'], r['last']) for r in state['rows']],
         'warnings': warnings,
     }
     digest = hashlib.sha256(json.dumps(fingerprint, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
     token = URLSafeTimedSerializer(current_app.secret_key, salt='allocation-preview').dumps(digest)
     return {'period_id': period.id, 'period_year': period.year, 'period_half': period.half,
-            'total': state['total'], 'local_percent': state['local_percent'],
-            'projected_local_percent': decimal_string(Fraction(local_after * 100, total_after)),
+            'total': state['total'], 'local_percent': state['local_percent'], 'groups': groups,
+            'projected_local_percent': decimal_string(Fraction(local_after * 100, total_after)) if total_after else '0',
             'recovery': recovery, 'recommended': public_row(recommended) if recommended else None,
             'selected': selected_data, 'warnings': warnings, 'token': token, 'fingerprint': digest,
-            'options': [{'id': r['outlet_id'], 'name': r['name'], 'category': r['category']} for r in state['rows']
-                        if r['active'] or r['outlet_id'] == retained_id]}
+            'options': [{'id': row['outlet_id'], 'name': row['name'], 'category': row['category']} for row in state['rows']
+                        if row['active'] or row['outlet_id'] == retained_id]}
 
 
 def token_matches(token, expected):

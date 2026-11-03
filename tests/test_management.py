@@ -55,13 +55,13 @@ class MediaManagementTests(AppTestCase):
         self.sign_in(admin=True)
 
     def test_create_read_update_and_delete_unused_media(self):
-        result = self.client.post('/admin/catalog/outlets',data={'name':'رسانه جدید','active':'1'})
+        result = self.client.post('/admin/catalog/outlets',data={'name':'رسانه جدید','media_type':'national'})
         self.assertEqual(result.status_code,302)
         media = Outlet.query.filter_by(name='رسانه جدید').one()
         media_id = media.id
         self.assertEqual(self.app.test_client().get(f'/media/{media.id}').status_code,200)
         self.assertEqual(self.client.get(f'/admin/media/{media.id}/edit').status_code,200)
-        self.assertEqual(self.client.post('/admin/catalog/outlets',data={'id':media.id,'name':'رسانه ویرایش‌شده','active':'1'}).status_code,302)
+        self.assertEqual(self.client.post('/admin/catalog/outlets',data={'id':media.id,'name':'رسانه ویرایش‌شده','media_type':'national'}).status_code,302)
         self.assertEqual(media.name,'رسانه ویرایش‌شده')
         self.assertEqual(self.client.post(f'/admin/media/{media.id}/delete').status_code,302)
         self.assertIsNone(db.session.get(Outlet,media_id))
