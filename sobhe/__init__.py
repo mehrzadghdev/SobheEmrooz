@@ -111,7 +111,8 @@ def create_app(config=None, *, instance_path=None):
     def context():
         if (request.endpoint or '').startswith('pwa.'):
             return {}
-        return dict(csrf_token=csrf_token, category_labels=category_labels(), roles=ROLES,
+        from .directive import settings as directive_settings
+        return dict(directive_active=directive_settings().get('active',False), csrf_token=csrf_token, category_labels=category_labels(), roles=ROLES,
                     weights=WEIGHTS, ad_types=AD_TYPES, print_statuses=PRINT_STATUSES,
                     provinces=PROVINCES, columns=COLUMNS, date_fields=DATE_FIELDS,
                     today=today(), current_period_key=period_key(), period_label=period_label,
@@ -140,6 +141,9 @@ def create_app(config=None, *, instance_path=None):
     def asset_version(endpoint, values):
         if endpoint == 'static' and values.get('filename') in versions:
             values.setdefault('v', versions[values['filename']])
+
+    from .directive import bp as directive_bp
+    app.register_blueprint(directive_bp)
 
     from .pwa import init_app as init_pwa
     init_pwa(app, versions)

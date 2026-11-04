@@ -1146,3 +1146,22 @@ test('allocation preview controls show loading and recover when calculation fail
     await expect(page.locator('#use-recommendation')).not.toHaveClass(/is-loading/);
     await expect(page.locator('.is-loading')).toHaveCount(0);
 });
+
+test('directive workspace saves confirmed office settings and navigates its forms', async () => {
+    await login();
+    await page.goto('/admin/directive?kind=settings');
+    await page.locator('#d-city').fill('مشهد');
+    await page.locator('#d-target').fill('65');
+    await page.locator('#d-authority').fill('تأیید آزمایشی دفتر');
+    await page.locator('#d-calendar_confirmed').check();
+    await page.locator('#d-tariff_confirmed').check();
+    await page.getByRole('button', {name:'ذخیره و بررسی', exact:true}).click();
+    await expect(page.locator('#d-authority')).toHaveValue('تأیید آزمایشی دفتر');
+    await expect(page.locator('#d-active')).not.toBeChecked();
+    await page.getByRole('link',{name:'نرخ‌نامه‌ها',exact:true}).click();
+    await expect(page.locator('#d-print_0_0')).toBeVisible();
+    await page.getByRole('link',{name:'سفارش‌ها',exact:true}).click();
+    await expect(page.locator('#d-subject')).toBeVisible();
+    await expect(page.locator('#evidence')).toHaveAttribute('accept',/\.docx/);
+    assert.deepEqual(errors, []);
+});

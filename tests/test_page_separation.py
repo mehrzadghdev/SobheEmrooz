@@ -67,7 +67,8 @@ class PageSeparationTests(AppTestCase):
         sidebar = html.split('<div class="sidebar-links">', 1)[1].split('<div class="sidebar-profile">', 1)[0]
         links = re.findall(r'<a class="side-link[^>]*href="([^"]+)"', sidebar)
         self.assertEqual(links[:3], ['/admin/advertisements', '/admin/catalog/outlets', '/admin/catalog/organizations'])
-        self.assertEqual(links[7:], ['/', '/reports', '/reports?view=media', '/reports?view=organizations'])
+        self.assertEqual(links[5:8], ['/admin/directive?kind=settings', '/admin/users', '/admin/audit'])
+        self.assertEqual(links[8:], ['/', '/reports', '/reports?view=media', '/reports?view=organizations'])
         self.assertIn('<span class="nav-label">رسانه‌ها</span>', sidebar)
         self.assertNotIn('مدیریت رسانه‌ها', sidebar)
         icons = re.findall(r'<svg.*?</svg>', sidebar, re.S)

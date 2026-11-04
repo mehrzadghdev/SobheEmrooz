@@ -260,3 +260,14 @@ python scripts/run_browser_tests.py
 ```
 
 The browser suite starts its own loopback server with a disposable database and tests navigation, loading feedback, form validation, stale previews, uploads/downloads, history, mobile/reduced motion, install prompts, offline recovery, and browsing without JavaScript. To use an already installed Chrome instead of downloading Chromium, set `SOBHE_BROWSER_CHANNEL=chrome` for the test command. Node.js and Playwright are only development dependencies.
+
+## Government advertisement directive (schema 6)
+
+The **دستورالعمل و سفارش‌ها** workspace adds verified media profiles, provincial
+priority recommendations, the documented 1403 tariff and effective-dated later
+rates, order placements, publication evidence, certificates, payments, sanctions
+and follow-up obligations. See [setup and article coverage](docs/DIRECTIVE.md).
+Run the existing backup command and `python -m flask --app app migrate` before
+using the workspace. The new policy remains inactive until the administrator
+confirms office settings, the calendar and tariff and classifies current-year
+history. No production data is changed by deployment alone.

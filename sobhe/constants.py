@@ -15,6 +15,7 @@ DATE_FIELDS = {'approval_date': 'تاریخ تایید آگهی', 'allocation_da
                'final_print_date': 'تاریخ چاپ نهایی', 'letter_date': 'تاریخ نامه سازمان'}
 # Ordering here is the ordering of selectable and exported columns.
 COLUMNS = {
+    'official_reference':'شناسه رسمی e-rasaneh (تأیید شده)',
     'id': 'شناسه داخلی', 'subject': 'موضوع', 'subject_description': 'شرح موضوع',
     'ma_reference': 'شناسه آگهی', 'organization': 'سازمان آگهی‌دهنده', 'outlet': 'رسانه',
     'print_status': 'وضعیت چاپ', 'proposed_date': 'تاریخ پیشنهادی', 'final_print_date': 'تاریخ چاپ نهایی',

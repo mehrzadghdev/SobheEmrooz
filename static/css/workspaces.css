@@ -179,3 +179,50 @@ summary:has(.accordion-meta)::after { margin-inline-start:2px; }
     .filtered-stats .stat-card { padding:8px; }
     .filtered-stats { grid-template-columns:repeat(3,minmax(0,1fr)); }
 }
+
+/* Directive sections are page links styled as a persistent tab strip. */
+.directive-tabs {
+    display:flex;
+    gap:4px;
+    overflow-x:auto;
+    padding:6px 6px 0;
+    margin:20px 0 18px;
+    border:1px solid var(--line);
+    border-bottom:2px solid var(--line);
+    border-radius:12px 12px 0 0;
+    background:var(--light);
+    scrollbar-width:thin;
+}
+.directive-tab {
+    position:relative;
+    flex:0 0 auto;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    min-height:48px;
+    padding:12px 18px;
+    border-radius:8px 8px 0 0;
+    color:var(--secondary-ink);
+    font-weight:500;
+    white-space:nowrap;
+}
+.directive-tab:hover { background:var(--secondary-hover); color:var(--ink); }
+.directive-tab.is-active {
+    background:var(--surface);
+    color:var(--primary-ink);
+    font-weight:700;
+    box-shadow:inset 0 0 0 1px var(--line);
+}
+.directive-tab.is-active::after {
+    content:"";
+    position:absolute;
+    bottom:0;
+    inset-inline:12px;
+    height:3px;
+    border-radius:3px 3px 0 0;
+    background:var(--primary);
+}
+.directive-tab:focus-visible { outline:2px solid var(--primary); outline-offset:-3px; }
+@media (max-width:650px) {
+    .directive-tab { min-height:46px; padding:10px 14px; font-size:13px; }
+}

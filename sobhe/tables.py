@@ -1,10 +1,18 @@
 """Allowlisted search and ordering for tables paginated by the database."""
-from sqlalchemy import String, cast, or_
+from sqlalchemy import String, Integer, cast, or_, select, func
 from .models import Advertisement, Organization, Outlet, Subject
 
 
 def ad_table_query(query, args):
     fields = {column.name: column for column in Advertisement.__table__.columns}
+    from .directive import DirectiveRecord
+    allocation = DirectiveRecord.__table__.alias('allocation_reference')
+    order = DirectiveRecord.__table__.alias('official_order')
+    official = select(func.json_extract(order.c.payload, '$.official_reference')).select_from(
+        order.join(allocation, order.c.id == cast(func.json_extract(allocation.c.payload, '$.order_id'), Integer))).where(
+        allocation.c.kind == 'allocation', allocation.c.reference == cast(Advertisement.id, String),
+        order.c.kind == 'order').correlate(Advertisement).scalar_subquery()
+    fields['official_reference'] = official
     fields.update(organization=Organization.name, outlet=Outlet.name, subject=Subject.name,
                   file=Advertisement.file_name)
     query = query.outerjoin(Organization).outerjoin(Outlet).outerjoin(Subject)

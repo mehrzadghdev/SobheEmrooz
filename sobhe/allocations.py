@@ -15,11 +15,12 @@ def find_period(value):
     return Period.query.filter_by(year=period_key(value)).first()
 
 
-def group_stats(category, amount, total):
-    expected = Fraction(total * WEIGHTS[category], 100)
+def group_stats(category, amount, total, target_percent=None):
+    target_percent = WEIGHTS[category] if target_percent is None else target_percent
+    expected = Fraction(total * target_percent, 100)
     status = 'empty' if not total else ('below-target' if amount < expected else
                                       'above-target' if amount > expected else 'on-target')
-    return {'category': category, 'target_percent': WEIGHTS[category],
+    return {'category': category, 'target_percent': target_percent,
             'status': status, 'status_class': 'muted' if not total else 'success' if amount == expected else 'warning',
             'status_label': {'empty': 'بدون تخصیص', 'below-target': 'کمتر از هدف گروه',
                              'above-target': 'بیشتر از هدف گروه', 'on-target': 'مطابق هدف گروه'}[status],
@@ -42,7 +43,7 @@ def snapshot(period, *, exclude_id=None):
     category_units = {key: sum(allocated.get(target.outlet_id, (0, 0))[0] for target in targets if target.category == key)
                       for key in CATEGORIES}
     total = sum(category_units.values())
-    result = {'total_units': total, 'total': boxes(total), 'categories': category_units,
+    result = {'excluded_id':exclude_id,'total_units': total, 'total': boxes(total), 'categories': category_units,
               'groups': {key: group_stats(key, category_units[key], total) for key in CATEGORIES},
               'local_units': category_units['local'],
               'rows': [], 'targets': targets, 'period': period}
@@ -61,10 +62,14 @@ def snapshot(period, *, exclude_id=None):
         group['active_count'] = sum(row['category'] == key and row['active'] for row in result['rows'])
     result['local_percent'] = decimal_string(Fraction(result['local_units'] * 100, total)) if total else '0'
     result['national_percent'] = decimal_string(Fraction(category_units['national'] * 100, total)) if total else '0'
-    return result
+    from .directive import policy_state
+    return policy_state(result)
 
 
 def recommend(state, volume_units):
+    if state.get('directive'):
+        from .directive import directive_recommend
+        return directive_recommend(state,volume_units), False
     total, local = state['total_units'], state['local_units']
     period = state['period']
     recovery = bool(period and period.recovery)
@@ -86,7 +91,7 @@ def recommend(state, volume_units):
 
 
 def public_row(row):
-    return {key: value for key, value in row.items() if key not in ('expected_units', 'last')}
+    return {key: value for key, value in row.items() if key not in ('expected_units', 'last', 'profile')}
 
 
 def preview(period, volume_units, selected_id=None, *, exclude_id=None, record_version=None):
@@ -99,6 +104,8 @@ def preview(period, volume_units, selected_id=None, *, exclude_id=None, record_v
     retained_id = existing.outlet_id if existing and existing.period_id == period.id else None
     selected = next((row for row in state['rows'] if row['outlet_id'] == selected_id
                      and (row['active'] or row['outlet_id'] == retained_id)), None)
+    if state.get('directive') and selected and not selected['active']:
+        raise ValueError('رسانه انتخاب‌شده واجد شرایط دستورالعمل نیست.')
     if selected_id and selected is None:
         raise ValueError('رسانه انتخاب‌شده فعال نیست یا در این دوره وجود ندارد.')
     labels = category_labels()
@@ -112,7 +119,12 @@ def preview(period, volume_units, selected_id=None, *, exclude_id=None, record_v
     groups = {}
     for key, group in state['groups'].items():
         after = group['allocated_units'] + (volume_units if selected and selected['category'] == key else 0)
-        projected = group_stats(key, after, total_after)
+        projected = group_stats(key, after, total_after, group['target_percent'])
+        if state.get('directive'):
+            projected['target_percent']=group['target_percent']
+            projected['expected_units']=Fraction(total_after*group['target_percent'],100)
+            projected['expected']=quota_boxes(projected['expected_units'])
+            projected['exceeded']=after>projected['expected_units']
         groups[key] = public_row(group)
         groups[key].update({f'projected_{name}': value for name, value in public_row(projected).items()
                             if name not in ('category', 'target_percent')})
@@ -129,8 +141,11 @@ def preview(period, volume_units, selected_id=None, *, exclude_id=None, record_v
                              projected_percent=decimal_string(Fraction(after * 100, total_after)) if total_after else '0',
                              projected_category_percent=decimal_string(Fraction(after * 100, group['projected_allocated_units']))
                              if group['projected_allocated_units'] else '0')
+    if state.get('directive'):
+        from .directive import allocation_findings
+        warnings = allocation_findings(state,selected,volume_units)
     local_after = state['local_units'] + (volume_units if selected and selected['category'] != 'national' else 0)
-    if selected and 5 * local_after > 3 * total_after:
+    if not state.get('directive') and selected and 5 * local_after > 3 * total_after:
         warnings.append('سهم محلی پس از تخصیص از سقف ترجیحی ۶۰ درصد عبور می‌کند؛ پیشنهاد رسانه همچنان بر اساس حجم آگهی است.')
     fingerprint = {
         'period': period.id, 'revision': period.revision, 'volume_units': volume_units,
@@ -138,11 +153,14 @@ def preview(period, volume_units, selected_id=None, *, exclude_id=None, record_v
         'total': state['total_units'], 'local': state['local_units'], 'recovery': period.recovery,
         'recommended': recommended['outlet_id'] if recommended else None,
         'rows': [(r['outlet_id'], r['category'], r['active'], r['allocated_units'], r['last']) for r in state['rows']],
+        'directive':state.get('directive',False),
+        'policy':state.get('policy_config',{}),
+        'profiles':[(r['outlet_id'],r.get('profile_version',0)) for r in state['rows']],
         'warnings': warnings,
     }
     digest = hashlib.sha256(json.dumps(fingerprint, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
     token = URLSafeTimedSerializer(current_app.secret_key, salt='allocation-preview').dumps(digest)
-    return {'period_id': period.id, 'period_year': period.year,
+    return {'directive':state.get('directive',False), 'period_id': period.id, 'period_year': period.year,
             'total': state['total'], 'local_percent': state['local_percent'], 'groups': groups,
             'projected_local_percent': decimal_string(Fraction(local_after * 100, total_after)) if total_after else '0',
             'recovery': recovery, 'recommended': public_row(recommended) if recommended else None,

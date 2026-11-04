@@ -18,6 +18,9 @@
       {{ navigation_link(url_for('web.catalog',kind=kind),label,symbol,request.endpoint == 'web.catalog' and request.view_args.get('kind') == kind) }}
       {% endfor %}
       {{ navigation_link(url_for('web.periods'),'دوره‌ها و سهم هدف','periods',request.endpoint in ['web.periods','web.period_edit','web.category_settings']) }}
+      {% endif %}
+      {{ navigation_link(url_for('directive.workspace',kind='settings' if g.user.role=='admin' else 'order'),'دستورالعمل و سفارش‌ها','directive',request.blueprint == 'directive') }}
+      {% if g.user.role == 'admin' %}
       {{ navigation_link(url_for('web.users'),'حساب‌های کاربری','users',request.endpoint == 'web.users') }}
       {{ navigation_link(url_for('web.audit_log'),'تاریخچه تغییرات','history',request.endpoint == 'web.audit_log') }}
       {% endif %}

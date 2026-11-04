@@ -79,6 +79,9 @@ def filtered_query(args, year, *, apply_dates=True):
 
 
 def cell(ad, key):
+    if key == 'official_reference':
+        from .directive import official_reference
+        return official_reference(ad)
     if key == 'organization':
         return ad.organization.name
     if key == 'outlet':

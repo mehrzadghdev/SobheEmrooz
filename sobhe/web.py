@@ -295,6 +295,10 @@ def save_ad(ad=None):
             flash('پیش‌نمایش تازه شد؛ سهم‌ها و هشدارها را بررسی و دوباره ثبت کنید. در صورت انتخاب فایل، آن را دوباره انتخاب کنید.', 'warning')
             data['override_confirmed'] = ''
             return ad_form(data, ad, preview_data, 409)
+        from .directive import settings as directive_settings
+        if directive_settings().get('active') and preview_data['warnings']:
+            if g.user.role != 'admin' or not data.get('directive_decision','').strip():
+                raise ValueError('برای عبور از محدودیت عددی، تصمیم مستند مدیر الزامی است.')
         if preview_data['warnings'] and data.get('override_confirmed') != '1':
             flash('برای ادامه تخصیص دستی، پذیرش هشدارهای سهمیه را علامت بزنید.', 'warning')
             return ad_form(data, ad, preview_data, 400)
@@ -315,12 +319,16 @@ def save_ad(ad=None):
         elif data.get('remove_file') == '1':
             ad.file_key = ad.file_name = ad.file_mime = None
         db.session.flush()
+        if directive_settings().get('active'):
+            from .directive import freeze_priority,lookup
+            freeze_priority(ad,lookup('profile',ad.outlet_id).data,directive_settings())
         a.update_recovery(period, preview_data['recovery'])
         if old_period_id and old_period_id != period.id:
             a.update_recovery(db.session.get(Period, old_period_id))
         s.audit('advertisement_edit' if before else 'advertisement_create', f'ad:{ad.id}',
                 {'before': before, 'after': s.ad_snapshot(ad), 'warnings': preview_data['warnings'],
                  'recommended_outlet_id': preview_data['recommended']['outlet_id'] if preview_data['recommended'] else None,
+                 'directive_decision':data.get('directive_decision',''),
                  'override_confirmed': data.get('override_confirmed') == '1'})
         db.session.commit()
         g.staged_files = []

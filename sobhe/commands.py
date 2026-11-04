@@ -23,7 +23,19 @@ from .services import period_bounds, period_key, today
 
 
 def migrate():
+    from .directive import DirectiveRecord
     tables = inspect(db.engine).get_table_names()
+    if 'schema_version' in tables:
+        versions = [row.version for row in SchemaVersion.query.order_by(SchemaVersion.version)]
+        if versions == [1, 2, 3, 4, 5]:
+            db.session.rollback()
+            with db.engine.begin() as connection:
+                connection.exec_driver_sql('BEGIN IMMEDIATE')
+                DirectiveRecord.__table__.create(connection, checkfirst=True)
+                connection.exec_driver_sql('INSERT INTO schema_version (version, applied_at) VALUES (6, CURRENT_TIMESTAMP)')
+            return 'Upgraded schema version 5 to version 6. Historical records preserved; directive policy awaits activation.'
+        if versions == [1, 2, 3, 4, 5, 6]:
+            return 'Schema version 6 is already current.'
     if tables:
         if 'schema_version' not in tables:
             raise click.ClickException('Unversioned database; refusing to alter it. Use a new SOBHE_DATA_DIR.')
@@ -52,6 +64,8 @@ def migrate():
                     connection.exec_driver_sql('INSERT INTO schema_version (version, applied_at) VALUES (4, CURRENT_TIMESTAMP)')
                 _upgrade_optional_volume(connection)
                 connection.exec_driver_sql('INSERT INTO schema_version (version, applied_at) VALUES (5, CURRENT_TIMESTAMP)')
+                DirectiveRecord.__table__.create(connection, checkfirst=True)
+                connection.exec_driver_sql('INSERT INTO schema_version (version, applied_at) VALUES (6, CURRENT_TIMESTAMP)')
                 if connection.exec_driver_sql('PRAGMA foreign_key_check').all():
                     raise click.ClickException('Foreign key validation failed; no changes made.')
                 connection.commit()
@@ -62,16 +76,16 @@ def migrate():
                 connection.exec_driver_sql('PRAGMA foreign_keys=ON')
         db.session.expire_all()
         pending = Outlet.query.filter(Outlet.category.is_(None)).count()
-        return f'Upgraded to schema version 5. Advertisement volume is optional; annual 50% local / 50% national targets are unchanged. Media awaiting type selection: {pending}.'
+        return f'Upgraded to schema version 5 and version 6. Advertisement volume is optional; annual 50% local / 50% national targets are unchanged. Media awaiting type selection: {pending}.'
     db.create_all()
-    for version in (1, 2, 3, 4, 5):
+    for version in (1, 2, 3, 4, 5, 6):
         db.session.add(SchemaVersion(version=version))
     for name in ('مناقصه', 'مزایده', 'ثبت شرکت', 'ابلاغیه قضایی', 'اطلاعیه'):
         db.session.add(Subject(name=name, active=True))
     db.session.commit()
     with db.engine.connect() as connection:
         connection.exec_driver_sql('PRAGMA journal_mode=WAL')
-    return 'Initialized schema version 5. Create your personal administrator with create-admin.'
+    return 'Initialized schema version 6. Create your personal administrator with create-admin.'
 
 
 def _upgrade_optional_volume(connection):

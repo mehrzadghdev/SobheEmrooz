@@ -114,6 +114,9 @@ def period_label(period):
 
 
 def category_labels():
+    from .directive import settings
+    if settings().get('active'):
+        return {'local':'اولویت اول', 'national':'اولویت دوم'}
     return dict(CATEGORY_LABELS)
 
 

@@ -149,7 +149,7 @@ class OptionalVolumeMigrationTests(AppTestCase):
                 connection.exec_driver_sql('ALTER TABLE advertisement_legacy RENAME TO advertisement')
                 for index in Advertisement.__table__.indexes:
                     connection.execute(CreateIndex(index))
-                connection.exec_driver_sql('DELETE FROM schema_version WHERE version = 5')
+                connection.exec_driver_sql('DELETE FROM schema_version WHERE version >= 5')
                 connection.commit()
             finally:
                 connection.rollback()

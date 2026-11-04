@@ -221,7 +221,7 @@ class LegacyMigrationTests(unittest.TestCase):
         count = OutletTarget.query.count()
         self.assertIn('already current',migrate())
         self.assertEqual(OutletTarget.query.count(),count)
-        self.assertEqual([row.version for row in SchemaVersion.query.order_by(SchemaVersion.version)],[1,2,3,4,5])
+        self.assertEqual([row.version for row in SchemaVersion.query.order_by(SchemaVersion.version)],[1,2,3,4,5,6])
         with db.engine.connect() as connection:
             self.assertEqual(connection.exec_driver_sql('PRAGMA integrity_check').scalar_one(),'ok')
             self.assertFalse(connection.exec_driver_sql('PRAGMA foreign_key_check').all())

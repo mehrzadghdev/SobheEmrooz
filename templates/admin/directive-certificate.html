@@ -1,0 +1,5 @@
+{% extends 'layouts/admin.html' %}
+{% block title %}ریز محاسبات گواهی{% endblock %}
+{% block content %}
+<section class="card"><h1>ریز محاسبات گواهی ثبت شده</h1><p>مرجع رسمی: {{ data.certificate_reference }} · {{ data.certificate_on|jalali }}</p><p>سازمان: {{ data.organization }} · موضوع: {{ data.subject }} · شناسه رسمی: {{ data.official_reference }}</p><table><thead><tr><th>رسانه (شناسه)</th><th>رتبه</th><th>نرخ واحد (ریال)</th><th>ضریب</th><th>حجم مبنا</th><th>تعدیل (ریال)</th><th>مبلغ (ریال)</th></tr></thead><tbody>{% for p in data.certificate.placements %}<tr><td>{{ p.outlet_id }}</td><td>{{ p.quote.rank }}</td><td>{{ p.quote.rate }}</td><td>{{ p.quote.factor }}</td><td>{{ p.quote.volume }}</td><td>{{ p.quote.adjustment }}</td><td>{{ p.quote.total|number }}</td></tr>{% endfor %}</tbody></table><p>جمع: {{ data.certificate.total|number }} ریال · سررسید: {{ data.due_on|jalali }}</p><p>این برگه ریز محاسبات داخلی است؛ گواهی رسمی توسط مرجع ذی‌صلاح صادر می‌شود.</p><a href="{{ source }}">مبنای دستورالعمل</a></section>
+{% endblock %}
