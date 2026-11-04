@@ -12,6 +12,7 @@ beforeEach(async () => {
     context = await browser.newContext({baseURL, reducedMotion: 'no-preference'});
     page = await context.newPage();
     page.setDefaultTimeout(10000);
+    page.setDefaultNavigationTimeout(10000);
     errors = [];
     page.on('pageerror', error => errors.push(error.message));
     page.on('dialog', async dialog => {
@@ -62,6 +63,121 @@ test('table controls paginate, search all rows, sort numbers, and reinitialize a
     await expect(table.locator('tbody tr:visible')).toHaveCount(30);
     await capture('table-controls');
 });
+test('public report cards and lists populate, filter, reset, and drill into unapproved ads', async () => {
+    await page.goto('/reports?year=1405');
+    const stats = page.locator('.filtered-stats .stat');
+    await expect(stats.nth(0)).toHaveText('1');
+    await expect(stats.nth(1)).toHaveText('10 کادر');
+    await expect(stats.nth(2)).toHaveText('0 ریال');
+    await expect(page.locator('.advertisement-table tbody tr')).toHaveCount(1);
+    await expect(page.locator('.advertisement-table tbody')).toContainText('7001');
+    await markShell();
+    await page.locator('.report-search > summary').click();
+    await expect(page.locator('#date-field')).toHaveValue('allocation_date');
+    await page.locator('.filter-disclosure:not(.column-selector) > summary').click();
+    await page.locator('#ma-min').fill('۷۰۰۱');
+    await page.locator('#ma-max').fill('۷۰۰۱');
+    await page.locator('.filter-actions button[type="submit"]').click();
+    await page.waitForURL(url => url.searchParams.get('ma_min') === '۷۰۰۱');
+    await expect(stats.nth(0)).toHaveText('1');
+    await expect(page.locator('.advertisement-table tbody')).toContainText('7001');
+    await expectShell();
+
+    await expect(page.locator('.report-search')).toHaveAttribute('open');
+    await page.locator('#date-field').selectOption('approval_date');
+    await page.locator('.filter-actions button[type="submit"]').click();
+    await page.waitForURL(url => url.searchParams.get('date_field') === 'approval_date');
+    await expect(stats.nth(0)).toHaveText('0');
+    await expect(stats.nth(1)).toHaveText('0 کادر');
+    await expect(page.locator('.report-empty-state')).toBeVisible();
+    await expect(page.locator('.report-search')).toHaveAttribute('open');
+    await page.locator('.filter-actions a').click();
+    await page.waitForURL(url => !url.searchParams.has('date_field'));
+    await expect(stats.nth(0)).toHaveText('1');
+    await expect(page.locator('#date-field')).toHaveValue('allocation_date');
+    await expect(page.locator('.advertisement-table tbody')).toContainText('7001');
+
+    await navigateByLink('.sidebar-links a[href="/reports?view=organizations"]', '/reports?view=organizations');
+    await expect(stats.nth(0)).toHaveText('1');
+    const organization = page.locator('.report-results tbody tr:visible');
+    await expect(organization).toHaveCount(1);
+    await expect(organization.locator('td').nth(1)).toHaveText('1');
+    await expect(organization.locator('td').nth(2)).toHaveText('10');
+    await organization.locator('a').click();
+    await page.waitForURL(url => url.searchParams.get('view') === 'ads' && url.searchParams.has('organization_id'));
+    await expect(stats.nth(0)).toHaveText('1');
+    await expect(page.locator('.advertisement-table tbody')).toContainText('7001');
+
+    await navigateByLink('.sidebar-links a[href="/reports?view=media"]', '/reports?view=media');
+    const media = page.locator('.media-share-table tbody tr').filter({hasText: 'صبح امروز'});
+    await expect(media.locator('td').nth(2)).toHaveText('10');
+    await media.locator('a').click();
+    await page.waitForURL(/\/media\/\d+\?/);
+    await expect(page.locator('.stat').first()).toHaveText('10 کادر');
+    await expect(page.locator('tbody tr:visible')).toContainText('7001');
+    await page.locator('.section-heading a').click();
+    await page.waitForURL(url => url.pathname === '/reports' && url.searchParams.has('outlet_id'));
+    await expect(stats.nth(0)).toHaveText('1');
+    await expect(page.locator('.advertisement-table tbody')).toContainText('7001');
+    await page.locator('.report-view-link').click();
+    await page.waitForURL(/\/advertisements\/\d+$/);
+    await expect(page.locator('h1')).toContainText('7001');
+    await expectShell();
+});
+
+test('report filters, search, sorting, and history update results without replacing the page or controls', async () => {
+    await page.goto('/reports?year=1405');
+    const documents = [];
+    page.on('request', request => { if (request.isNavigationRequest()) documents.push(request.url()); });
+    await page.evaluate(() => {
+        window.liveReport = {
+            root: document.querySelector('[data-live-page]'),
+            charts: document.querySelector('[data-report-charts]'),
+            filters: document.getElementById('report-filter-form'),
+            search: document.querySelector('form.table-controls [name="q"]'),
+        };
+    });
+    const search = page.locator('form.table-controls [name="q"]');
+    await search.fill('7001');
+    const scroll = await page.evaluate(() => scrollY);
+    await search.press('Enter');
+    await page.waitForURL(url => url.searchParams.get('q') === '7001');
+    await expect(search).toBeFocused();
+    assert.ok(Math.abs(await page.evaluate(() => scrollY) - scroll) <= 1);
+    await expect(page.locator('.filtered-stats .stat').first()).toHaveText('1');
+    await page.locator('a.table-sort[href*="sort=ma_reference"]').click();
+    await page.waitForURL(url => url.searchParams.get('sort') === 'ma_reference');
+    await expect(page.locator('th[aria-sort="ascending"]')).toContainText('شناسه آگهی');
+    await page.locator('.report-search > summary').click();
+    await page.locator('.filter-disclosure:not(.column-selector) > summary').click();
+    await page.locator('#ma-min').fill('7002');
+    await page.locator('.filter-actions button[type="submit"]').click();
+    await page.waitForURL(url => url.searchParams.get('ma_min') === '7002');
+    assert.equal(new URL(page.url()).searchParams.get('q'), '7001');
+    assert.equal(new URL(page.url()).searchParams.get('sort'), 'ma_reference');
+    await expect(page.locator('.report-search')).toHaveAttribute('open');
+    await expect(page.locator('.filtered-stats .stat').first()).toHaveText('0');
+    await expect(page.locator('.report-empty-state')).toBeVisible();
+    await page.locator('.filter-actions a').click();
+    await page.waitForURL(url => !url.searchParams.has('ma_min'));
+    await expect(search).toHaveValue('');
+    await expect(page.locator('.filtered-stats .stat').first()).toHaveText('1');
+    await page.goBack();
+    await page.waitForURL(url => url.searchParams.get('ma_min') === '7002');
+    await expect(search).toHaveValue('7001');
+    await expect(page.locator('#ma-min')).toHaveValue('7002');
+    await expect(page.locator('.filtered-stats .stat').first()).toHaveText('0');
+    await page.goForward();
+    await page.waitForURL(url => !url.searchParams.has('ma_min'));
+    await expect(page.locator('.filtered-stats .stat').first()).toHaveText('1');
+    assert.equal(await page.evaluate(() =>
+        window.liveReport.root === document.querySelector('[data-live-page]')
+        && window.liveReport.charts === document.querySelector('[data-report-charts]')
+        && window.liveReport.filters === document.getElementById('report-filter-form')
+        && window.liveReport.search === document.querySelector('form.table-controls [name="q"]')), true);
+    assert.deepEqual(documents, []);
+});
+
 async function markShell() {
     await page.evaluate(() => {
         window.testShell = {
@@ -387,7 +503,7 @@ test('admin and public pages stay separate through navigation, history, and them
     await expect(page.locator('.workspace-context')).toHaveCount(0);
     await expect(page.locator('h1')).toHaveText('گزارش آگهی‌ها');
     await expect(page.locator('#main-content a[href^="/admin/"], #main-content [data-delete-ad]')).toHaveCount(0);
-    await expect(page.locator('#date-field')).toHaveValue('approval_date');
+    await expect(page.locator('#date-field')).toHaveValue('allocation_date');
     await expect(page.locator('.report-search')).not.toHaveAttribute('open');
     await page.locator('.report-search > summary').focus();
     await page.keyboard.press('Enter');
@@ -403,8 +519,7 @@ test('admin and public pages stay separate through navigation, history, and them
     await capture('report-accordions');
     await page.locator('.filter-actions button[type="submit"]').click();
     await page.waitForURL(url => url.searchParams.get('ma_min') === '7001');
-    await expect(page.locator('.report-search')).not.toHaveAttribute('open');
-    await page.locator('.report-search > summary').click();
+    await expect(page.locator('.report-search')).toHaveAttribute('open');
     await expect(page.locator('#ma-min')).toBeVisible();
     await expect(page.locator('.accordion-meta').first()).toContainText('فیلتر فعال');
     await page.locator('#theme-toggle').click();
@@ -582,7 +697,7 @@ test('entity delete actions confirm removal and archive referenced organizations
     await expect(archive).toBeDisabled();
     await expect(page.locator('.alert.success')).toContainText('بایگانی شد');
     await page.goto('/advertisements/1');
-    await expect(page.locator('h1')).toHaveText('آگهی م/الف 7001');
+    await expect(page.locator('h1')).toHaveText('آگهی با شناسه 7001');
 });
 
 test('custom confirmations preserve validation and button values and cancel across history changes', async () => {
@@ -661,21 +776,22 @@ test('custom confirmations preserve validation and button values and cancel acro
 test('public chart slices drill into media shares and survive navigation and empty years', async () => {
     await page.goto('/reports?view=media&year=1405');
     await markShell();
-    await expect(page.locator('[data-line-chart] svg')).toBeVisible();
-    const month = page.locator('[data-chart-month="0"]');
-    await month.hover();
-    await expect(page.locator('body > .chart-popover')).toBeVisible();
-    await expect(page.locator('body > .chart-popover')).toContainText('فروردین');
-    await page.locator('[data-chart-mode="bar"]').click();
-    await expect(page.locator('[data-line-chart]')).toHaveAttribute('data-mode','bar');
-    await expect(page.locator('[data-line-chart] .chart-bar')).toHaveCount(24);
-    await month.focus();
-    await expect(page.locator('body > .chart-popover')).toContainText('مجموع ماه');
+    await expect(page.locator('[data-line-chart], [data-chart-mode], .report-line-card, .site-footer')).toHaveCount(0);
+    await expect(page.locator('[data-bar-chart] svg')).toBeVisible();
+    await expect(page.locator('[data-bar-chart] .chart-bar')).toHaveCount(24);
+    await page.locator('[data-chart-bucket="0"]').focus();
+    await expect(page.locator('body > .chart-popover:not([hidden])')).toContainText('فروردین');
+    await page.keyboard.press('ArrowRight');
+    await expect(page.locator('[data-chart-bucket="1"]')).toBeFocused();
     await page.keyboard.press('Escape');
-    await expect(page.locator('body > .chart-popover')).toBeHidden();
-    await page.locator('[data-chart-mode="line"]').click();
+    await expect(page.locator('[data-chart-panel="bar"] [data-chart-range="yearly"]')).toHaveAttribute('aria-pressed','true');
+    await expect(page.locator('[data-chart-panel="pie"] [data-chart-range="yearly"]')).toHaveAttribute('aria-pressed','true');
     const local = page.locator('[data-chart-slice="local"]');
     await local.focus();
+    await expect(page.locator('body > .chart-popover:not([hidden])')).toBeVisible();
+    await expect(page.locator('body > .chart-popover:not([hidden])')).toContainText('سهم از کل بازه');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('body > .chart-popover:not([hidden])')).toBeHidden();
     await page.keyboard.press('Enter');
     await expect(page.locator('[data-chart-dialog]')).toBeVisible();
     await expect(page.locator('#chart-detail-title')).toHaveText('سهم رسانه‌های محلی');
@@ -703,6 +819,167 @@ test('public chart slices drill into media shares and survive navigation and emp
     await expect(page.locator('[data-summary-pie]')).toHaveCount(0);
     await page.locator('[data-chart-category="local"]').click();
     await expect(page.locator('[data-detail-pie]')).toContainText('حجمی ثبت نشده');
+});
+
+test('pie item cards and range toggles keep readable neutral hover colors in both themes', async () => {
+    await page.goto('/reports?view=media&year=1405');
+    const tokenColor = token => page.evaluate(name => {
+        const probe = document.createElement('span');
+        probe.style.color = `var(${name})`;
+        document.body.append(probe);
+        const value = getComputedStyle(probe).color;
+        probe.remove();
+        return value;
+    }, token);
+    const contrast = (foreground, background) => {
+        const luminance = color => color.match(/[\d.]+/g).slice(0,3).map(Number).map(value => {
+            value /= 255;
+            return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+        }).reduce((sum, value, index) => sum + value * [0.2126,0.7152,0.0722][index], 0);
+        const a = luminance(foreground), b = luminance(background);
+        return (Math.max(a,b) + 0.05) / (Math.min(a,b) + 0.05);
+    };
+    for (const theme of ['light','dark']) {
+        if (theme === 'dark') await page.locator('#theme-toggle').click();
+        await expect(page.locator('html')).toHaveAttribute('data-theme',theme);
+        for (const [selector, background, foreground] of [
+            ['[data-chart-category="local"]','--light','--ink'],
+            ['[data-chart-category="national"]','--light','--ink'],
+            ['[data-chart-panel="bar"] [data-chart-range="yearly"]','--surface','--primary-ink'],
+            ['[data-chart-panel="bar"] [data-chart-range="monthly"]','--secondary-hover','--ink'],
+            ['[data-chart-panel="bar"] [data-chart-range="weekly"]','--secondary-hover','--ink'],
+            ['[data-chart-panel="pie"] [data-chart-range="yearly"]','--surface','--primary-ink'],
+            ['[data-chart-panel="pie"] [data-chart-range="monthly"]','--secondary-hover','--ink'],
+            ['[data-chart-panel="pie"] [data-chart-range="weekly"]','--secondary-hover','--ink'],
+        ]) {
+            const button = page.locator(selector);
+            await button.hover();
+            await expect(button).toHaveCSS('background-color', await tokenColor(background));
+            await expect(button).toHaveCSS('color', await tokenColor(foreground));
+            const colors = await button.evaluate(node => {
+                const style = getComputedStyle(node);
+                return [style.color,style.backgroundColor];
+            });
+            assert.ok(contrast(...colors) >= 4.5, `${theme}: ${selector} lacks readable contrast`);
+        }
+        await capture(`chart-hover-${theme}`);
+    }
+});
+
+test('each chart owns its yearly default and period controls without changing the other chart', async () => {
+    await page.goto('/reports?year=1405&ma_min=7001&ad_type=ثبت+شرکت&ad_type=متفرقه');
+    await markShell();
+    const bar = page.locator('[data-chart-panel="bar"]');
+    const pie = page.locator('[data-chart-panel="pie"]');
+    const chartData = panel => panel.locator('[data-report-chart-data]').evaluate(node => JSON.parse(node.textContent));
+    const annual = await chartData(bar);
+    for (const card of [bar,pie]) {
+        await expect(card.locator('[data-chart-range="yearly"]')).toHaveAttribute('aria-pressed','true');
+        assert.equal((await chartData(card)).window.mode, 'yearly');
+        await expect(card.locator('.chart-period-controls')).toHaveCount(1);
+    }
+    await expect(bar.locator('.chart-bar')).toHaveCount(24);
+    await page.locator('form.table-controls [name="q"]').fill('7001');
+    await page.locator('form.table-controls [name="q"]').press('Enter');
+    await page.waitForURL(url => url.searchParams.get('q') === '7001');
+    await page.evaluate(() => { window.originalPie = document.querySelector('[data-chart-panel="pie"]'); });
+    await bar.locator('[data-chart-range="monthly"]').click();
+    await page.waitForURL(url => url.searchParams.get('chart_bar_range') === 'monthly');
+    await expect(bar.locator('[data-chart-range="monthly"]')).toBeFocused();
+    await expect(pie.locator('[data-chart-range="yearly"]')).toHaveAttribute('aria-pressed','true');
+    assert.equal(await page.evaluate(() => window.originalPie === document.querySelector('[data-chart-panel="pie"]')), true);
+    assert.equal((await chartData(pie)).total_units, annual.total_units);
+    assert.deepEqual(new URL(page.url()).searchParams.getAll('ad_type'), ['ثبت شرکت','متفرقه']);
+    assert.equal(new URL(page.url()).searchParams.get('ma_min'), '7001');
+    await bar.locator('#chart-bar-month').selectOption('1');
+    await bar.locator('.chart-period-controls button[value="monthly"]').last().click();
+    await page.waitForURL(url => url.searchParams.get('chart_bar_month') === '1');
+    const monthly = await chartData(bar);
+    assert.equal(monthly.window.month, 1);
+    await expect(bar.locator('.chart-bar')).toHaveCount(62);
+    assert.equal(await bar.locator('.chart-bar').evaluateAll(nodes => nodes.reduce((sum,node) => sum + Number(node.dataset.units),0)), monthly.total_units);
+    await page.evaluate(() => { window.monthlyBar = document.querySelector('[data-chart-panel="bar"]'); });
+    await pie.locator('[data-chart-range="weekly"]').click();
+    await page.waitForURL(url => url.searchParams.get('chart_pie_range') === 'weekly');
+    await expect(pie.locator('#chart-pie-date')).toHaveClass('jalali-input');
+    await pie.locator('#chart-pie-date').fill('1405/01/01');
+    await pie.locator('.chart-period-controls button[value="weekly"]').last().click();
+    await page.waitForURL(url => url.searchParams.get('chart_pie_date') === '2026-03-21');
+    const weekly = await chartData(pie);
+    assert.equal(weekly.window.start, '2026-03-21');
+    assert.equal(weekly.window.end, '2026-03-27');
+    assert.equal((await chartData(bar)).window.month, 1);
+    await expect(bar.locator('[data-chart-range="monthly"]')).toHaveAttribute('aria-pressed','true');
+    assert.equal(await page.evaluate(() => window.monthlyBar === document.querySelector('[data-chart-panel="bar"]')), true);
+    await pie.locator('[data-chart-category="local"]').click();
+    await expect(page.locator('#chart-detail-description')).toContainText(weekly.window.label);
+    await page.locator('[data-chart-close]').click();
+    await capture('independent-chart-periods');
+    await pie.locator('[data-chart-range="yearly"]').click();
+    await page.waitForURL(url => url.searchParams.get('chart_pie_range') === 'yearly');
+    assert.equal((await chartData(pie)).total_units, annual.total_units);
+    await expect(bar.locator('[data-chart-range="monthly"]')).toHaveAttribute('aria-pressed','true');
+    await page.goBack();
+    await page.waitForURL(url => url.searchParams.get('chart_pie_range') === 'weekly');
+    await expect(pie.locator('[data-chart-range="weekly"]')).toHaveAttribute('aria-pressed','true');
+    await expect(bar.locator('#chart-bar-month')).toHaveValue('1');
+    await bar.locator('[data-chart-range="weekly"]').click();
+    await page.waitForURL(url => url.searchParams.get('chart_bar_range') === 'weekly');
+    await bar.locator('#chart-bar-date').fill('1405/01/01');
+    await bar.locator('.chart-period-controls button[value="weekly"]').last().click();
+    await page.waitForURL(url => url.searchParams.get('chart_bar_date') === '2026-03-21');
+    await expect(bar.locator('.chart-bar')).toHaveCount(14);
+    await expect(pie.locator('[data-chart-range="weekly"]')).toHaveAttribute('aria-pressed','true');
+    await pie.locator('[data-chart-range="monthly"]').click();
+    await page.waitForURL(url => url.searchParams.get('chart_pie_range') === 'monthly');
+    await pie.locator('#chart-pie-month').selectOption('1');
+    await pie.locator('.chart-period-controls button[value="monthly"]').last().click();
+    await page.waitForURL(url => url.searchParams.get('chart_pie_month') === '1');
+    await expect(bar.locator('[data-chart-range="weekly"]')).toHaveAttribute('aria-pressed','true');
+    await expectShell();
+});
+
+test('long media lists scroll independently while the pie and dialog heading stay visible', async () => {
+    await page.route('**/reports?view=media&year=1405', async route => {
+        const response = await route.fetch();
+        const html = await response.text();
+        const body = html.replace(/(<script type="application\/json" data-report-chart-data data-chart-kind="pie">)(.*?)(<\/script>)/s,
+            (_, before, json, after) => {
+                const data = JSON.parse(json);
+                const local = data.groups.find(group => group.key === 'local');
+                local.media.push(...Array.from({length:80}, (_, index) => ({id:1000 + index,
+                    name:`رسانه آزمایشی ${index}`, units:0, allocated:'0', percent:'0', url:'/media/1?year=1405'})));
+                return before + JSON.stringify(data) + after;
+            });
+        await route.fulfill({response, body});
+    });
+    await page.goto('/reports?view=media&year=1405');
+    for (const viewport of [{width:1280,height:900},{width:390,height:844},{width:390,height:560}]) {
+        await page.setViewportSize(viewport);
+        await page.locator('[data-chart-category="local"]').click();
+        const dialog = page.locator('[data-chart-dialog]');
+        const list = page.locator('[data-detail-legend]');
+        const pie = page.locator('[data-detail-pie] svg');
+        await expect(pie).toBeVisible();
+        await page.evaluate(async () => {
+            await Promise.all(document.getAnimations().map(animation => animation.finished.catch(() => {})));
+        });
+        const before = await pie.boundingBox();
+        assert.ok(await list.evaluate(node => node.scrollHeight > node.clientHeight));
+        await list.focus();
+        await page.keyboard.press('End');
+        await expect.poll(() => list.evaluate(node => node.scrollTop)).toBeGreaterThan(0);
+        const after = await pie.boundingBox();
+        assert.ok(Math.abs(after.y - before.y) < 1);
+        const bounds = await dialog.boundingBox();
+        assert.ok(after.y >= bounds.y && after.y + after.height <= bounds.y + bounds.height);
+        assert.ok(bounds.y >= 0 && bounds.y + bounds.height <= viewport.height);
+        assert.equal(await dialog.evaluate(node => node.scrollTop), 0);
+        await expect(page.locator('[data-chart-close]')).toBeVisible();
+        await capture(`pie-scroll-${viewport.width}-${viewport.height}`);
+        await page.keyboard.press('Escape');
+        await expect(dialog).toBeHidden();
+    }
 });
 
 test('admin ads are a plain list and the ad form requires identification, organization, media and volume', async () => {

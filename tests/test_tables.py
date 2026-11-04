@@ -38,11 +38,16 @@ class TableTests(AppTestCase):
         self.assertEqual(len(context['events']), 1)
 
     def test_dashboard_percentage_colors_follow_exact_group_targets(self):
-        self.add_ad(index=0, volume=70)
-        self.add_ad(index=4, volume=30)
+        self.add_ad(index=0, volume=12)
+        self.add_ad(index=4, volume=88)
         response = self.client.get('/')
         self.assertIn('percentage-status warning', response.text)
+        self.assertNotIn('percentage-status success', response.text)
+        self.assertIn('کمتر از هدف گروه', response.text)
+        self.add_ad(index=0, volume=76)
+        response = self.client.get('/')
         self.assertIn('percentage-status success', response.text)
+        self.assertNotIn('percentage-status warning', response.text)
 
     def test_search_treats_sql_wildcards_as_literal(self):
         self.add_ad(notes='100%')

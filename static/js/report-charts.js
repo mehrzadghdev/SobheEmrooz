@@ -6,7 +6,8 @@
     const numbers = new Intl.NumberFormat('fa-IR', {maximumFractionDigits: 2});
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
     const mediaColors = Array.from({length: 8}, (_, index) => `var(--chart-media-${index + 1})`);
-    let currentDialog, cleanup;
+    let currentDialog;
+    const cleanups = new Map();
     let sequence = 0;
     const animations = new Set();
 
@@ -121,7 +122,7 @@
         container.replaceChildren();
         const total = items.reduce((sum, item) => sum + item.units, 0);
         if (!total) {
-            container.append(element('p', 'chart-empty', 'در این گروه برای سال انتخاب‌شده حجمی ثبت نشده است.'));
+            container.append(element('p', 'chart-empty', 'در این گروه برای بازه انتخاب‌شده حجمی ثبت نشده است.'));
             return {highlight() {}, reset() { tip.hide(); }};
         }
         const svg = svgNode('svg', {viewBox: '0 0 300 300', role: 'group', 'aria-label': label});
@@ -143,10 +144,10 @@
             container.classList.add('is-interacting');
             for (const [key, shape] of shapes) shape.classList.toggle('is-highlighted', key === index);
             center.textContent = `${numbers.format(Number(item.percent))}٪`;
-            caption.textContent = onSelect ? 'سهم از کل سال' : 'سهم از گروه';
+            caption.textContent = onSelect ? 'سهم از کل بازه' : 'سهم از گروه';
             tip.show(source, item.name, [
                 {name: 'حجم تخصیص', value: `${numbers.format(item.units / 100)} کادر`, color: item.color},
-                {name: onSelect ? 'سهم از کل سال' : 'سهم از گروه', value: `${numbers.format(Number(item.percent))}٪`}
+                {name: onSelect ? 'سهم از کل بازه' : 'سهم از گروه', value: `${numbers.format(Number(item.percent))}٪`}
             ], onSelect ? 'برای مشاهده رسانه‌های این گروه کلیک کنید' : null, event);
         };
         items.forEach((item, index) => {
@@ -187,98 +188,68 @@
         return {highlight, reset};
     }
 
-    // A monotone curve rounds joins without introducing peaks or negative volumes.
-    function smoothPath(points) {
-        const slopes = points.slice(1).map((point, index) => (point.y - points[index].y) / (point.x - points[index].x));
-        const tangents = points.map((_, index) => {
-            if (!index) return slopes[0];
-            if (index === points.length - 1) return slopes.at(-1);
-            const before = slopes[index - 1], after = slopes[index];
-            return before * after <= 0 ? 0 : 2 * before * after / (before + after);
-        });
-        return points.reduce((path, point, index) => {
-            if (!index) return `M${point.x} ${point.y}`;
-            const previous = points[index - 1], third = (point.x - previous.x) / 3;
-            return path + ` C${previous.x + third} ${previous.y + tangents[index - 1] * third} `
-                + `${point.x - third} ${point.y - tangents[index] * third} ${point.x} ${point.y}`;
-        }, '');
-    }
-
-    function monthlyChart(container, data, tip) {
-        const width = 680, height = 292, left = 64, right = 650, top = 24, bottom = 236;
-        const maximum = Math.max(...data.months.flatMap(month => [month.local, month.national])) / 100;
+    function barChart(container, data, tip) {
+        const width = Math.max(680, data.buckets.length * 38 + 88), height = 292;
+        const left = 58, right = width - 30, top = 24, bottom = 236;
+        const maximum = Math.max(...data.buckets.flatMap(bucket => [bucket.local, bucket.national])) / 100;
         const raw = Math.max(maximum, 0.01) / 4;
         const magnitude = 10 ** Math.floor(Math.log10(raw));
         const normalized = raw / magnitude;
         const step = Math.max(0.01, (normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10) * magnitude);
         const ceiling = Math.max(step, Math.ceil(maximum / step) * step);
-        const slot = (right - left) / 12;
+        const slot = (right - left) / data.buckets.length;
         const x = index => left + slot * (index + 0.5);
-        const y = units => bottom - (units / 100) / ceiling * (bottom - top);
+        const y = units => bottom - units / 100 / ceiling * (bottom - top);
         const svg = svgNode('svg', {viewBox: `0 0 ${width} ${height}`, role: 'group',
-            'aria-label': `روند ماهانه حجم تخصیص در سال ${data.year}؛ هر ماه را برای جزئیات انتخاب کنید.`});
-        const definitions = svgNode('defs');
-        const plot = svgNode('rect', {x: left, y: top, width: right - left, height: bottom - top, rx: 12, class: 'chart-plot-background'});
-        svg.append(definitions, plot);
+            'data-dense': String(data.buckets.length > 12),
+            'aria-label': `حجم تخصیص محلی و سراسری؛ ${data.window.label}`});
+        svg.append(svgNode('rect', {x: left, y: top, width: right - left, height: bottom - top,
+            rx: 12, class: 'chart-plot-background'}));
         for (let tick = 0; tick <= Math.round(ceiling / step); tick++) {
             const value = tick * step, position = bottom - value / ceiling * (bottom - top);
             svg.append(svgNode('line', {x1: left, x2: right, y1: position, y2: position, class: 'chart-grid-line'}));
-            svg.append(svgNode('text', {x: left - 12, y: position + 4, 'text-anchor': 'end', class: 'chart-axis-label'}, numbers.format(value)));
+            svg.append(svgNode('text', {x: left - 12, y: position + 4,
+                'text-anchor': 'end', class: 'chart-axis-label'}, numbers.format(value)));
         }
-        data.months.forEach((month, index) => svg.append(svgNode('text', {
-            x: x(index), y: bottom + 29, 'text-anchor': 'middle', class: 'chart-month-label', 'data-month-label': index
-        }, month.name)));
-        const lines = svgNode('g', {class: 'chart-mode-lines'});
-        const bars = svgNode('g', {class: 'chart-mode-bars'});
-        const pointNodes = [], barNodes = [];
-        for (const [groupIndex, group] of data.groups.entries()) {
-            const color = `var(--chart-${group.key})`;
-            const gradientId = `chart-area-${group.key}-${++sequence}`;
-            const gradient = svgNode('linearGradient', {id: gradientId, x1: 0, x2: 0, y1: 0, y2: 1});
-            gradient.append(svgNode('stop', {offset: '0%', 'stop-color': color, 'stop-opacity': '.18'}),
-                svgNode('stop', {offset: '100%', 'stop-color': color, 'stop-opacity': '0'}));
-            definitions.append(gradient);
-            const points = data.months.map((month, index) => ({x: x(index), y: y(month[group.key])}));
-            const path = smoothPath(points);
-            lines.append(svgNode('path', {d: `${path} L${x(11)} ${bottom} L${x(0)} ${bottom} Z`, fill: `url(#${gradientId})`, class: 'chart-area'}));
-            lines.append(svgNode('path', {d: path, class: `chart-line chart-line-${group.key}`}));
-            points.forEach((point, index) => {
-                const circle = svgNode('circle', {cx: point.x, cy: point.y, r: 4,
-                    class: `chart-point chart-point-${group.key}`, 'data-point-month': index});
-                lines.append(circle);
-                pointNodes.push(circle);
-                const barWidth = slot * 0.27;
-                const bar = svgNode('rect', {x: point.x + (groupIndex ? 2 : -barWidth - 2), y: point.y,
-                    width: barWidth, height: bottom - point.y, rx: 5,
-                    class: `chart-bar chart-bar-${group.key}`, 'data-bar-month': index});
-                bars.append(bar);
-                barNodes.push(bar);
+        const bars = svgNode('g');
+        data.buckets.forEach((bucket, index) => {
+            const label = /^\d+$/.test(bucket.label) ? numbers.format(Number(bucket.label)) : bucket.label;
+            svg.append(svgNode('text', {x: x(index), y: bottom + 29, 'text-anchor': 'middle',
+                class: 'chart-bucket-label', 'data-bucket-label': index}, label));
+            data.groups.forEach((group, groupIndex) => {
+                const position = y(bucket[group.key]), barWidth = slot * 0.27;
+                bars.append(svgNode('rect', {x: x(index) + (groupIndex ? 2 : -barWidth - 2), y: position,
+                    width: barWidth, height: bottom - position, rx: 5,
+                    class: `chart-bar chart-bar-${group.key}`, 'data-bar-bucket': index,
+                    'data-units': bucket[group.key]}));
             });
-        }
-        const guide = svgNode('line', {x1: 0, x2: 0, y1: top, y2: bottom, class: 'chart-hover-guide', visibility: 'hidden'});
-        svg.append(lines, bars, guide);
+        });
+        const guide = svgNode('line', {x1: 0, x2: 0, y1: top, y2: bottom,
+            class: 'chart-hover-guide', visibility: 'hidden'});
+        svg.append(bars, guide);
         const reset = () => {
             guide.setAttribute('visibility', 'hidden');
             container.classList.remove('is-interacting');
             svg.querySelectorAll('.is-highlighted').forEach(node => node.classList.remove('is-highlighted'));
             tip.hide();
         };
-        data.months.forEach((month, index) => {
+        data.buckets.forEach((bucket, index) => {
             const hit = svgNode('rect', {x: left + index * slot, y: top, width: slot, height: bottom - top,
-                fill: 'transparent', class: 'chart-month-hit', tabindex: 0, role: 'button', 'data-chart-month': index,
-                'aria-label': `${month.name}؛ محلی ${numbers.format(month.local / 100)} و سراسری ${numbers.format(month.national / 100)} کادر`});
-            function activate(event) {
+                fill: 'transparent', class: 'chart-bucket-hit', tabindex: 0, role: 'button', 'data-chart-bucket': index,
+                'aria-label': `${bucket.name}؛ محلی ${numbers.format(bucket.local / 100)} و سراسری ${numbers.format(bucket.national / 100)} کادر`});
+            const activate = event => {
                 guide.setAttribute('x1', x(index));
                 guide.setAttribute('x2', x(index));
                 guide.setAttribute('visibility', 'visible');
                 container.classList.add('is-interacting');
-                for (const node of pointNodes) node.classList.toggle('is-highlighted', Number(node.dataset.pointMonth) === index);
-                for (const node of barNodes) node.classList.toggle('is-highlighted', Number(node.dataset.barMonth) === index);
-                svg.querySelectorAll('[data-month-label]').forEach(node => node.classList.toggle('is-highlighted', Number(node.dataset.monthLabel) === index));
-                tip.show(hit, `${month.name} ${numbers.format(data.year)}`, data.groups.map(group => ({
-                    name: group.label, value: `${numbers.format(month[group.key] / 100)} کادر`, color: `var(--chart-${group.key})`
-                })), `مجموع ماه: ${numbers.format((month.local + month.national) / 100)} کادر`, event);
-            }
+                svg.querySelectorAll('[data-bar-bucket]').forEach(node =>
+                    node.classList.toggle('is-highlighted', Number(node.dataset.barBucket) === index));
+                svg.querySelectorAll('[data-bucket-label]').forEach(node =>
+                    node.classList.toggle('is-highlighted', Number(node.dataset.bucketLabel) === index));
+                tip.show(hit, bucket.name, data.groups.map(group => ({name: group.label,
+                    value: `${numbers.format(bucket[group.key] / 100)} کادر`, color: `var(--chart-${group.key})`
+                })), `مجموع: ${numbers.format((bucket.local + bucket.national) / 100)} کادر`, event);
+            };
             hit.addEventListener('pointerenter', event => { if (event.pointerType !== 'touch') activate(event); });
             hit.addEventListener('pointermove', event => { if (event.pointerType !== 'touch') tip.position(event); });
             hit.addEventListener('pointerdown', event => { if (event.pointerType === 'touch') activate(); });
@@ -290,7 +261,7 @@
                 if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
                     event.preventDefault();
                     const next = index + (event.key === 'ArrowRight' ? 1 : -1);
-                    svg.querySelector(`[data-chart-month="${next}"]`)?.focus();
+                    svg.querySelector(`[data-chart-bucket="${next}"]`)?.focus();
                 }
             });
             svg.append(hit);
@@ -299,116 +270,113 @@
         container.addEventListener('scroll', reset, {passive: true});
         container.replaceChildren(svg);
         container.hidden = false;
-        container.dataset.mode = 'line';
-        animate(lines, [{opacity: 0, transform: 'translateY(8px)'}, {opacity: 1, transform: 'translateY(0)'}], {duration: 750});
-        return mode => {
-            reset();
-            container.dataset.mode = mode;
-            const group = mode === 'bar' ? bars : lines;
-            animate(group, [{opacity: 0, transform: 'translateY(8px)'}, {opacity: 1, transform: 'translateY(0)'}], {duration: 420});
-        };
+        animate(bars, [{opacity: 0, transform: 'translateY(8px)'}, {opacity: 1, transform: 'translateY(0)'}]);
     }
 
-    function initialize() {
-        const root = document.querySelector('[data-report-charts]');
-        if (!root || initialized.has(root)) return;
+    function initializePanel(root) {
+        if (initialized.has(root)) return;
         initialized.add(root);
         const signal = new AbortController();
         const data = JSON.parse(root.querySelector('[data-report-chart-data]').textContent);
         const dialog = root.querySelector('[data-chart-dialog]');
-        const summaryTip = popover(document.body), detailTip = popover(dialog);
-        const tips = [summaryTip, detailTip];
+        const summaryTip = popover(document.body), detailTip = dialog ? popover(dialog) : null;
+        const tips = [summaryTip, detailTip].filter(Boolean);
         const detailPie = root.querySelector('[data-detail-pie]');
         const detailLegend = root.querySelector('[data-detail-legend]');
-        let trigger, summaryPie;
-        function openGroup(key, source) {
-            const group = data.groups.find(item => item.key === key);
-            if (!group) return;
-            tips.forEach(tip => tip.hide());
-            summaryPie?.reset();
-            trigger = source;
-            root.querySelector('#chart-detail-title').textContent = `سهم ${group.label}`;
-            root.querySelector('#chart-detail-description').textContent =
-                `سال ${numbers.format(data.year)} · ${numbers.format(group.units / 100)} کادر · درصد هر رسانه از کل حجم همین گروه`;
-            const media = group.media.map((item, index) => ({...item, color: mediaColors[index % mediaColors.length]}));
-            const detailChart = pie(detailPie, media, `درصد سهم هر رسانه در ${group.label}`, detailTip);
-            detailLegend.replaceChildren();
-            media.forEach((item, index) => {
-                const row = element('div', 'chart-media-row');
-                const swatch = svgNode('svg', {viewBox: '0 0 14 14', class: 'chart-swatch', 'aria-hidden': 'true'});
-                swatch.append(svgNode('rect', {width: 14, height: 14, rx: 4, fill: item.color}));
-                const link = element('a', '', item.name);
-                link.href = item.url;
-                const description = element('span');
-                description.append(link, element('small', '', `${numbers.format(item.units / 100)} کادر`));
-                row.append(swatch, description, element('strong', '', `${numbers.format(Number(item.percent))}٪`));
-                row.addEventListener('pointerenter', event => { if (event.pointerType !== 'touch') detailChart.highlight(index, row, event); });
-                row.addEventListener('pointermove', event => detailTip.position(event));
-                row.addEventListener('pointerleave', () => detailChart.reset());
-                link.addEventListener('focus', () => detailChart.highlight(index, link));
-                link.addEventListener('blur', () => detailChart.reset());
-                detailLegend.append(row);
-            });
-            currentDialog = dialog;
-            dialog.showModal();
-            animate(dialog, [{opacity: 0}, {opacity: 1}], {duration: 250});
-            animate(root.querySelector('.chart-detail-layout'), [{opacity: 0, transform: 'translateY(10px)'},
-                {opacity: 1, transform: 'translateY(0)'}], {duration: 450});
-        }
-        root.querySelector('[data-chart-close]').addEventListener('click', () => dialog.close());
-        dialog.addEventListener('click', event => {
-            if (event.target !== dialog) return;
-            const bounds = dialog.getBoundingClientRect();
-            if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) dialog.close();
-        });
-        dialog.addEventListener('scroll', () => detailTip.hide(), {passive: true});
-        dialog.addEventListener('close', () => {
-            detailTip.hide();
-            if (currentDialog === dialog) currentDialog = null;
-            if (trigger?.isConnected) trigger.focus({preventScroll: true});
-        });
-        root.querySelectorAll('[data-chart-category]').forEach((button, index) => {
-            button.disabled = false;
-            button.addEventListener('click', () => openGroup(button.dataset.chartCategory, button));
-            button.addEventListener('pointerenter', event => { if (event.pointerType !== 'touch') summaryPie?.highlight(index, button, event); });
-            button.addEventListener('pointermove', event => summaryTip.position(event));
-            button.addEventListener('pointerleave', () => summaryPie?.reset());
-            button.addEventListener('focus', () => summaryPie?.highlight(index, button));
-            button.addEventListener('blur', () => summaryPie?.reset());
-        });
-        const summary = root.querySelector('[data-summary-pie]');
-        if (summary) summaryPie = pie(summary, data.groups.map(group => ({...group, name: group.label,
-            color: `var(--chart-${group.key})`})), 'سهم حجم سالانه رسانه‌های محلی و سراسری', summaryTip, openGroup);
-        const monthly = root.querySelector('[data-line-chart]');
-        if (monthly) {
-            const changeMode = monthlyChart(monthly, data, summaryTip);
-            root.querySelectorAll('[data-chart-mode]').forEach(button => {
-                button.disabled = false;
-                button.addEventListener('click', () => {
-                    if (button.getAttribute('aria-pressed') === 'true') return;
-                    root.querySelectorAll('[data-chart-mode]').forEach(option => option.setAttribute('aria-pressed', String(option === button)));
-                    changeMode(button.dataset.chartMode);
+        if (dialog) {
+            let trigger, summaryPie;
+            function openGroup(key, source) {
+                const group = data.groups.find(item => item.key === key);
+                if (!group) return;
+                tips.forEach(tip => tip.hide());
+                summaryPie?.reset();
+                trigger = source;
+                root.querySelector('#chart-detail-title').textContent = `سهم ${group.label}`;
+                root.querySelector('#chart-detail-description').textContent =
+                    `${data.window.label} · ${numbers.format(group.units / 100)} کادر · درصد هر رسانه از کل حجم همین گروه`;
+                const media = group.media.map((item, index) => ({...item, color: mediaColors[index % mediaColors.length]}));
+                const detailChart = pie(detailPie, media, `درصد سهم هر رسانه در ${group.label}`, detailTip);
+                detailLegend.replaceChildren();
+                detailLegend.scrollTop = 0;
+                media.forEach((item, index) => {
+                    const row = element('div', 'chart-media-row');
+                    const swatch = svgNode('svg', {viewBox: '0 0 14 14', class: 'chart-swatch', 'aria-hidden': 'true'});
+                    swatch.append(svgNode('rect', {width: 14, height: 14, rx: 4, fill: item.color}));
+                    const link = element('a', '', item.name);
+                    link.href = item.url;
+                    const description = element('span');
+                    description.append(link, element('small', '', `${numbers.format(item.units / 100)} کادر`));
+                    row.append(swatch, description, element('strong', '', `${numbers.format(Number(item.percent))}٪`));
+                    row.addEventListener('pointerenter', event => { if (event.pointerType !== 'touch') detailChart.highlight(index, row, event); });
+                    row.addEventListener('pointermove', event => detailTip.position(event));
+                    row.addEventListener('pointerleave', () => detailChart.reset());
+                    link.addEventListener('focus', () => detailChart.highlight(index, link));
+                    link.addEventListener('blur', () => detailChart.reset());
+                    detailLegend.append(row);
                 });
+                currentDialog = dialog;
+                dialog.showModal();
+                animate(dialog, [{opacity: 0}, {opacity: 1}], {duration: 250});
+                animate(root.querySelector('.chart-detail-layout'), [{opacity: 0, transform: 'translateY(10px)'},
+                    {opacity: 1, transform: 'translateY(0)'}], {duration: 450});
+            }
+            root.querySelector('[data-chart-close]').addEventListener('click', () => dialog.close());
+            dialog.addEventListener('click', event => {
+                if (event.target !== dialog) return;
+                const bounds = dialog.getBoundingClientRect();
+                if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) dialog.close();
             });
+            detailLegend.addEventListener('scroll', () => detailTip.hide(), {passive: true});
+            dialog.addEventListener('close', () => {
+                detailTip.hide();
+                if (currentDialog === dialog) currentDialog = null;
+                if (trigger?.isConnected) trigger.focus({preventScroll: true});
+            });
+            root.querySelectorAll('[data-chart-category]').forEach((button, index) => {
+                button.disabled = false;
+                button.addEventListener('click', () => openGroup(button.dataset.chartCategory, button));
+                button.addEventListener('pointerenter', event => { if (event.pointerType !== 'touch') summaryPie?.highlight(index, button, event); });
+                button.addEventListener('pointermove', event => summaryTip.position(event));
+                button.addEventListener('pointerleave', () => summaryPie?.reset());
+                button.addEventListener('focus', () => summaryPie?.highlight(index, button));
+                button.addEventListener('blur', () => summaryPie?.reset());
+            });
+            const summary = root.querySelector('[data-summary-pie]');
+            if (summary) summaryPie = pie(summary, data.groups.map(group => ({...group, name: group.label,
+                color: `var(--chart-${group.key})`})), 'سهم حجم رسانه‌های محلی و سراسری در بازه انتخاب‌شده', summaryTip, openGroup);
         }
+        const bars = root.querySelector('[data-bar-chart]');
+        if (bars) barChart(bars, data, summaryTip);
         document.addEventListener('pointerdown', event => {
-            if (!event.target.closest('.chart-pie, .chart-group-button, .chart-line-scroll, .chart-media-row')) tips.forEach(tip => tip.hide());
+            if (!event.target.closest('.chart-pie, .chart-group-button, .chart-media-row, .chart-bar-scroll')) tips.forEach(tip => tip.hide());
         }, {signal: signal.signal});
         window.addEventListener('scroll', () => tips.forEach(tip => tip.track()), {signal: signal.signal, passive: true});
         window.addEventListener('resize', () => tips.forEach(tip => tip.track()), {signal: signal.signal});
-        cleanup = () => {
+        cleanups.set(root, () => {
+            if (dialog?.open) dialog.close();
+            if (currentDialog === dialog) currentDialog = null;
             signal.abort();
             tips.forEach(tip => tip.destroy());
-            animations.forEach(animation => animation.cancel());
-            animations.clear();
-        };
+            for (const animation of animations) {
+                const target = animation.effect?.target;
+                if (target && (root.contains(target) || !target.isConnected)) {
+                    animation.cancel();
+                    animations.delete(animation);
+                }
+            }
+            cleanups.delete(root);
+        });
+    }
+
+    function initialize() {
+        document.querySelectorAll('[data-chart-panel]').forEach(initializePanel);
     }
 
     document.addEventListener('sobhe:before-render', () => {
-        if (currentDialog?.open) currentDialog.close();
-        currentDialog = null;
-        cleanup?.();
-        cleanup = null;
+        for (const cleanup of cleanups.values()) cleanup();
+    });
+    document.addEventListener('sobhe:before-chart-update', event => {
+        cleanups.get(event.detail?.root)?.();
     });
     document.addEventListener('sobhe:page-render', initialize);
     initialize();

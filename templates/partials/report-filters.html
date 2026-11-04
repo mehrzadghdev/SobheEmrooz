@@ -1,12 +1,13 @@
 {% if view == 'ads' %}
-<details class="card no-print report-filters report-search">
+<details class="card no-print report-filters report-search" data-page-region="filters">
   <summary id="report-search-title"><span class="accordion-copy"><span>جستجو در آگهی‌ها</span><small>تاریخ، سازمان، رسانه و فیلترهای پیشرفته</small></span></summary>
 {% else %}
-<section class="card no-print report-filters" aria-labelledby="report-search-title">
+<section class="card no-print report-filters" data-page-region="filters" aria-labelledby="report-search-title">
   <div class="section-heading"><div><h2 id="report-search-title">محدوده گزارش سازمان‌ها</h2><p>بازه زمانی و گزینه‌های دلخواه را انتخاب کنید، سپس «نمایش نتایج» را بزنید.</p></div></div>
 {% endif %}
-  <form method="get" id="report-filter-form" class="{{ 'accordion-body' if view == 'ads' }}">
+  <form method="get" id="report-filter-form" data-live-controls="report-filters" class="{{ 'accordion-body' if view == 'ads' }}">
     <input type="hidden" name="year" value="{{ selected.year }}">
+    {% for key in ['q','sort','direction','chart_bar_range','chart_bar_month','chart_bar_date','chart_pie_range','chart_pie_month','chart_pie_date'] %}{% if key in request.args %}<input type="hidden" name="{{ key }}" value="{{ request.args[key] }}">{% endif %}{% endfor %}
     {% if not management %}<input type="hidden" name="view" value="{{ view }}">{% endif %}
     {% if view == 'ads' %}<input type="hidden" name="column_selection" value="1">{% endif %}
     <div class="fields report-date-fields">

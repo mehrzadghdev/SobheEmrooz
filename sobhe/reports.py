@@ -1,12 +1,13 @@
 """Public report filters and allowlisted display/export columns."""
 from datetime import datetime, timedelta
+from fractions import Fraction
 from zoneinfo import ZoneInfo
 
 import jdatetime
 from sqlalchemy import func
 from .constants import AD_TYPES, COLUMNS, DATE_FIELDS, DEFAULT_COLUMNS, PRINT_STATUSES, PROVINCES
-from .models import Advertisement, OutletTarget, db
-from .services import boxes, category_labels, integer, jalali, parse_date, period_bounds, text
+from .models import Advertisement, db
+from .services import boxes, category_labels, decimal_string, integer, jalali, parse_date, period_bounds, text, today
 
 
 def selected_columns(args):
@@ -29,7 +30,8 @@ def filtered_query(args, year, *, apply_dates=True):
         anniversary = jdatetime.date(jstart.year + 1, jstart.month, 29).togregorian()
     if end >= anniversary:
         raise ValueError('حداکثر بازه تاریخ گزارش یک سال شمسی است.')
-    field = args.get('date_field', 'approval_date')
+    # Every record has an allocation date; approval and print dates are optional.
+    field = args.get('date_field', 'allocation_date')
     if field not in DATE_FIELDS:
         raise ValueError('نوع تاریخ گزارش معتبر نیست.')
     column = getattr(Advertisement, field)
@@ -97,27 +99,90 @@ PERSIAN_MONTHS = ('فروردین', 'اردیبهشت', 'خرداد', 'تیر', 
                   'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند')
 
 
-def allocation_charts(state, year):
-    """Annual allocation charts use recorded period categories and nonvoid volume."""
-    months = [{'name': name, 'local': 0, 'national': 0} for name in PERSIAN_MONTHS]
+def chart_args(args, kind):
+    """Each chart owns its range while retaining the other chart's URL state."""
+    return {f'chart_{key}': args[f'chart_{kind}_{key}'] for key in ('range', 'month', 'date')
+            if f'chart_{kind}_{key}' in args}
+
+
+def chart_window(args, year):
+    """Chart scopes stay within the selected Persian year; weeks start Saturday."""
+    start, end = period_bounds(year)
+    anchor = min(max(today(), start), end - timedelta(days=1))
+    mode = args.get('chart_range', 'yearly')
+    if mode not in ('yearly', 'monthly', 'weekly'):
+        raise ValueError('بازه نمودار معتبر نیست.')
+    month = jdatetime.date.fromgregorian(date=anchor).month
+    if mode == 'monthly':
+        month = integer(args.get('chart_month', month), 1, 12)
+        lower = jdatetime.date(year, month, 1).togregorian()
+        upper = jdatetime.date(year, month + 1, 1).togregorian() if month < 12 else end
+        label = f'{PERSIAN_MONTHS[month - 1]} {year}'
+    elif mode == 'weekly':
+        anchor = parse_date(args.get('chart_date') or anchor.isoformat())
+        if not start <= anchor < end:
+            raise ValueError('تاریخ هفته باید در سال انتخاب‌شده باشد.')
+        saturday = anchor - timedelta(days=(anchor.weekday() + 2) % 7)
+        lower, upper = max(start, saturday), min(end, saturday + timedelta(days=7))
+        label = f'{jalali(lower)} تا {jalali(upper - timedelta(days=1))}'
+    else:
+        lower, upper, label = start, end, f'سال {year}'
+    return {'mode': mode, 'start': lower.isoformat(), 'end': (upper - timedelta(days=1)).isoformat(),
+            'label': label, 'month': month, 'date': anchor.isoformat(),
+            'year_start': start.isoformat(), 'year_end': (end - timedelta(days=1)).isoformat()}
+
+
+def allocation_charts(state, year, args=None):
+    """Bar series and pie totals share allocation dates and recorded media categories."""
+    from .allocations import group_stats
+
+    window = chart_window(args or {}, year)
+    start, end = parse_date(window['start']), parse_date(window['end'])
+    if window['mode'] == 'yearly':
+        buckets = [{'label': name, 'name': f'{name} {year}', 'local': 0, 'national': 0}
+                   for name in PERSIAN_MONTHS]
+    else:
+        weekdays = ('دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنجشنبه', 'جمعه', 'شنبه', 'یکشنبه')
+        days = [start + timedelta(days=index) for index in range((end - start).days + 1)]
+        buckets = [{'label': weekdays[day.weekday()] if window['mode'] == 'weekly'
+                    else str(jdatetime.date.fromgregorian(date=day).day),
+                    'name': jalali(day), 'local': 0, 'national': 0} for day in days]
+    allocated = {}
     if state['period']:
-        daily = db.session.query(Advertisement.allocation_date, OutletTarget.category,
-                                 func.sum(Advertisement.volume_units)).join(OutletTarget,
-            (OutletTarget.period_id == Advertisement.period_id)
-            & (OutletTarget.outlet_id == Advertisement.outlet_id)).filter(
-                Advertisement.period_id == state['period'].id, Advertisement.voided_at.is_(None)
-            ).group_by(Advertisement.allocation_date, OutletTarget.category)
-        for allocated, category, volume in daily:
-            month = jdatetime.date.fromgregorian(date=allocated).month
-            months[month - 1][category] += int(volume or 0)
+        categories = {row['outlet_id']: row['category'] for row in state['rows']}
+        daily = db.session.query(Advertisement.allocation_date, Advertisement.outlet_id,
+                                 func.sum(Advertisement.volume_units)).filter(
+            Advertisement.period_id == state['period'].id, Advertisement.voided_at.is_(None),
+            Advertisement.allocation_date >= start, Advertisement.allocation_date <= end
+        ).group_by(Advertisement.allocation_date, Advertisement.outlet_id)
+        for day, outlet_id, volume in daily:
+            category = categories.get(outlet_id)
+            if category is None:
+                continue
+            units = int(volume or 0)
+            allocated[outlet_id] = allocated.get(outlet_id, 0) + units
+            index = jdatetime.date.fromgregorian(date=day).month - 1 if window['mode'] == 'yearly' else (day - start).days
+            buckets[index][category] += units
+    category_units = {key: sum(int(allocated.get(row['outlet_id']) or 0) for row in state['rows']
+                               if row['category'] == key) for key in state['groups']}
+    total = sum(category_units.values())
     labels = category_labels()
     groups = []
-    for key, group in state['groups'].items():
-        media = [{'id': row['outlet_id'], 'name': row['name'], 'units': row['allocated_units'],
-                  'allocated': row['allocated'], 'percent': row['category_percent']}
-                 for row in state['rows'] if row['category'] == key]
+    for key in state['groups']:
+        group = group_stats(key, category_units[key], total)
+        media = []
+        for row in state['rows']:
+            if row['category'] != key:
+                continue
+            units = int(allocated.get(row['outlet_id']) or 0)
+            media.append({'id': row['outlet_id'], 'name': row['name'], 'units': units,
+                          'allocated': boxes(units),
+                          'percent': decimal_string(Fraction(units * 100, category_units[key]))
+                          if category_units[key] else '0'})
         media.sort(key=lambda row: (-row['units'], row['id']))
         groups.append({'key': key, 'label': labels[key], 'units': group['allocated_units'],
-                       'allocated': group['allocated'], 'percent': group['actual_percent'], 'media': media})
-    return {'year': year, 'total': state['total'], 'total_units': state['total_units'],
-            'groups': groups, 'months': months}
+                       'allocated': group['allocated'], 'percent': group['actual_percent'],
+                       'status_class': group['status_class'], 'status_label': group['status_label'], 'media': media})
+    return {'year': year, 'total': boxes(total), 'total_units': total,
+            'groups': groups, 'window': window, 'buckets': buckets,
+            'month_options': [{'value': index + 1, 'label': name} for index, name in enumerate(PERSIAN_MONTHS)]}

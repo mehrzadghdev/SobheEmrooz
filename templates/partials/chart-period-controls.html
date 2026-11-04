@@ -1,0 +1,10 @@
+{% macro period_controls(chart, kind) %}
+{% set prefix = 'chart_' ~ kind ~ '_' %}
+<form method="get" class="chart-period-controls no-print" data-live-controls="chart-period-{{ kind }}" aria-label="بازه نمودار {{ 'میله‌ای' if kind == 'bar' else 'دایره‌ای' }}">
+  {% for key,value in request.args.items(multi=True) %}{% if key not in [prefix ~ 'range',prefix ~ 'month',prefix ~ 'date','chart_range','chart_month','chart_date','export','page','half'] %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endif %}{% endfor %}
+  {% if 'year' not in request.args %}<input type="hidden" name="year" value="{{ selected.year }}">{% endif %}
+  <div class="chart-view-switch" role="group" aria-label="بازه نمودار {{ 'میله‌ای' if kind == 'bar' else 'دایره‌ای' }}">{% for mode,label in [('yearly','سالانه'),('monthly','ماهانه'),('weekly','هفتگی')] %}<button type="submit" name="{{ prefix }}range" value="{{ mode }}" data-chart-range="{{ mode }}" aria-pressed="{{ 'true' if chart.window.mode == mode else 'false' }}">{{ label }}</button>{% endfor %}</div>
+  {% if chart.window.mode == 'monthly' %}<label for="chart-{{ kind }}-month">ماه<select id="chart-{{ kind }}-month" name="{{ prefix }}month">{% for month in chart.month_options %}<option value="{{ month.value }}" {{ 'selected' if month.value == chart.window.month }}>{{ month.label }}</option>{% endfor %}</select></label><button class="secondary" name="{{ prefix }}range" value="monthly">نمایش ماه</button>{% endif %}
+  {% if chart.window.mode == 'weekly' %}<label for="chart-{{ kind }}-date">یک روز از هفته<input id="chart-{{ kind }}-date" type="date" name="{{ prefix }}date" value="{{ chart.window.date }}" min="{{ chart.window.year_start }}" max="{{ chart.window.year_end }}" required></label><button class="secondary" name="{{ prefix }}range" value="weekly">نمایش هفته</button>{% endif %}
+</form>
+{% endmacro %}

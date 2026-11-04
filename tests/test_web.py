@@ -13,7 +13,20 @@ from tests.support import AppTestCase, png_bytes
 
 
 class AdvertisementTests(AppTestCase):
-    def test_manual_allocation_persists_and_changes_recommendations(self):
+    def test_recommended_outlet_saves_size_based_group(self):
+        for reference, volume, category in (('8101', '۴٫۹۹', 'national'),
+                                            ('8102', '۵', 'local'),
+                                            ('8103', '1000', 'local')):
+            with self.subTest(volume=volume):
+                data = self.data(ma_reference=reference, volume=volume, outlet_id='')
+                result = self.preview(data)
+                self.assertEqual(result['recommended']['category'], category)
+                data['outlet_id'] = str(result['recommended']['outlet_id'])
+                self.assertEqual(self.submit(data).status_code, 302)
+                ad = Advertisement.query.filter_by(ma_reference=int(reference)).one()
+                self.assertEqual(ad.outlet_id, result['recommended']['outlet_id'])
+
+    def test_manual_allocation_persists_and_size_keeps_local_recommendation(self):
         result = self.preview()
         response = self.submit()
         self.assertEqual(response.status_code, 302)
@@ -21,7 +34,7 @@ class AdvertisementTests(AppTestCase):
         self.assertEqual(ad.volume_units, 1000)
         self.assertEqual(ad.creator_id, self.operator.id)
         self.assertEqual(a.snapshot(self.period)['total'], '10')
-        self.assertEqual(self.preview()['recommended']['category'], 'national')
+        self.assertEqual(self.preview()['recommended']['category'], 'local')
         event = AuditEvent.query.filter_by(action='advertisement_create').one()
         self.assertTrue(json.loads(event.detail)['override_confirmed'])
         self.assertEqual(event.actor_id, self.operator.id)
@@ -214,13 +227,13 @@ class ReportTests(AppTestCase):
         book = load_workbook(io.BytesIO(export.data))
         self.assertEqual(list(book.active.values), [('شناسه آگهی','متن آگهی'),(1002,'ساخت پل')])
 
-    def test_approval_default_excludes_null_but_allocation_date_includes(self):
+    def test_allocation_default_includes_records_without_approval(self):
         self.add_ad(ma_reference=1002)
         client = self.app.test_client()
-        no_date = client.get('/reports?year=1405&export=xlsx')
-        with_date = client.get('/reports?year=1405&export=xlsx&date_field=allocation_date')
-        self.assertEqual(load_workbook(io.BytesIO(no_date.data)).active.max_row, 1)
-        self.assertEqual(load_workbook(io.BytesIO(with_date.data)).active.max_row, 2)
+        default = client.get('/reports?year=1405&export=xlsx')
+        approval = client.get('/reports?year=1405&export=xlsx&date_field=approval_date')
+        self.assertEqual(load_workbook(io.BytesIO(default.data)).active.max_row, 2)
+        self.assertEqual(load_workbook(io.BytesIO(approval.data)).active.max_row, 1)
 
     def test_bad_ranges_and_columns_are_rejected(self):
         for args in ({'start':'1404/01/01','end':'1405/01/01'}, {'start':'1405/02/01','end':'1405/01/01'},

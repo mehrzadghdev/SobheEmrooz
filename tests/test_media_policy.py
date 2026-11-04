@@ -158,9 +158,9 @@ class AutomaticMediaTests(AppTestCase):
 
     def test_tie_breaking_uses_oldest_last_allocation_then_id(self):
         self.volumes([10,10,30,30,100,100])
-        result = a.preview(self.period,units(1))
+        result = a.preview(self.period,units(5))
         self.assertEqual(result['recommended']['outlet_id'],self.outlets[0].id)
-        self.assertEqual(a.preview(self.period,units(1))['recommended'],result['recommended'])
+        self.assertEqual(a.preview(self.period,units(5))['recommended'],result['recommended'])
 
 
 class LegacyMigrationTests(unittest.TestCase):

@@ -37,7 +37,7 @@ class PageSeparationTests(AppTestCase):
         public = self.app.test_client()
         for client in (public, self.client):
             response = client.get('/reports?year=1405&export=xlsx')
-            self.assertEqual(load_workbook(io.BytesIO(response.data)).active.max_row, 1)
+            self.assertEqual(load_workbook(io.BytesIO(response.data)).active.max_row, 2)
         response = self.client.get('/admin/advertisements?year=1405&export=xlsx')
         self.assertEqual(load_workbook(io.BytesIO(response.data)).active.max_row, 2)
 

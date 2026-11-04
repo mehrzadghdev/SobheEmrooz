@@ -24,7 +24,7 @@
             token.value = data.token;
             document.getElementById('preview-results').hidden = !volume.value.trim();
             write('preview-period', `${data.period_year} · فروردین تا اسفند`);
-            write('preview-status', data.recovery ? 'پیشنهاد سراسری برای بازگرداندن سهم محلی به ۵۰ درصد' : 'اولویت با رسانه‌های محلی دارای کمترین حجم دریافتی در سال است.');
+            write('preview-status', 'آگهی کمتر از ۵ کادر به سراسری و آگهی ۵ کادر و بیشتر به محلی پیشنهاد می‌شود؛ درصد سهم محلی در این انتخاب اثری ندارد.');
             write('recommended-name', data.recommended?.name || 'رسانه فعال در گروه موردنیاز وجود ندارد');
             write('recommended-allocated', data.recommended ? `${data.recommended.allocated} کادر` : '—');
             write('recommended-category-percent', data.recommended ? `${data.recommended.category_percent}٪` : '—');

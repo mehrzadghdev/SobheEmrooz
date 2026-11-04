@@ -3,7 +3,7 @@
 <th scope="col" aria-sort="{{ ('ascending' if request.args.get('direction','desc') == 'asc' else 'descending') if active else 'none' }}"><a class="table-sort" href="{{ query_url(sort=key,direction='desc' if active and request.args.get('direction','desc') == 'asc' else 'asc',page=1,export='') }}">{{ label }} <span aria-hidden="true">{{ ('↑' if request.args.get('direction','desc') == 'asc' else '↓') if active else '↕' }}</span></a></th>
 {% endmacro %}
 {% macro search_controls() %}
-<form method="get" class="table-controls no-print" role="search" aria-label="جستجو در جدول">
+<form method="get" class="table-controls no-print" data-live-controls="table" role="search" aria-label="جستجو در جدول">
 {% for key, value in request.args.items(multi=True) %}{% if key not in ['q','page','per_page','export'] %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endif %}{% endfor %}
 <label>جستجو در جدول<input type="search" name="q" value="{{ request.args.get('q','') }}" placeholder="جستجو…" maxlength="200"></label>
 <label>تعداد در صفحه<select name="per_page">{% for size in [15,30,50,100] %}<option value="{{ size }}" {{ 'selected' if per_page == size }}>{{ size }}</option>{% endfor %}{% if per_page not in [15,30,50,100] %}<option value="{{ per_page }}" selected>{{ per_page }}</option>{% endif %}</select></label><button type="submit" class="secondary">اعمال</button>

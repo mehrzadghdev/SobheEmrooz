@@ -8,7 +8,7 @@ from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from sqlalchemy import func
 from .constants import CATEGORIES, WEIGHTS
 from .models import Advertisement, Period, db
-from .services import boxes, quota_boxes, decimal_string, period_key, category_labels
+from .services import boxes, quota_boxes, decimal_string, period_key, category_labels, units
 
 
 def find_period(value):
@@ -17,7 +17,13 @@ def find_period(value):
 
 def group_stats(category, amount, total):
     expected = Fraction(total * WEIGHTS[category], 100)
+    status = 'empty' if not total else ('below-target' if amount < expected else
+                                      'above-target' if amount > expected else 'on-target')
     return {'category': category, 'target_percent': WEIGHTS[category],
+            'status': status, 'status_class': 'muted' if not total else 'success' if amount == expected else 'warning',
+            'status_label': {'empty': 'بدون تخصیص', 'below-target': 'کمتر از هدف گروه',
+                             'above-target': 'بیشتر از هدف گروه', 'on-target': 'مطابق هدف گروه'}[status],
+            'shortfall': quota_boxes(max(0, expected - amount)),
             'allocated_units': amount, 'allocated': boxes(amount),
             'actual_percent': decimal_string(Fraction(amount * 100, total)) if total else '0',
             'expected_units': expected, 'expected': quota_boxes(expected),
@@ -68,7 +74,8 @@ def recommend(state, volume_units):
         recovery = True
     if total and not recovery and 5 * (local + volume_units) > 3 * (total + volume_units):
         recovery = True
-    categories = ['national'] if recovery else ['local']
+    # Ad size takes priority over percentage targets and recovery mode.
+    categories = ['national'] if volume_units < units(5) else ['local']
     eligible = [row for row in state['rows'] if row['active']]
     for category in categories:
         candidates = [row for row in eligible if row['category'] == category]
@@ -124,7 +131,7 @@ def preview(period, volume_units, selected_id=None, *, exclude_id=None, record_v
                              if group['projected_allocated_units'] else '0')
     local_after = state['local_units'] + (volume_units if selected and selected['category'] != 'national' else 0)
     if selected and 5 * local_after > 3 * total_after:
-        warnings.append('سهم محلی پس از تخصیص از سقف ترجیحی ۶۰ درصد عبور می‌کند؛ پیشنهادهای بعدی به سمت سراسری می‌رود.')
+        warnings.append('سهم محلی پس از تخصیص از سقف ترجیحی ۶۰ درصد عبور می‌کند؛ پیشنهاد رسانه همچنان بر اساس حجم آگهی است.')
     fingerprint = {
         'period': period.id, 'revision': period.revision, 'volume_units': volume_units,
         'selected': selected_id, 'excluded': exclude_id, 'record_version': record_version,

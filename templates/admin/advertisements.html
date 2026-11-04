@@ -3,7 +3,9 @@
 {% set ad_actions_template = 'admin/ad-actions.html' %}
 {% block title %}آگهی‌ها | پنل مدیریت{% endblock %}
 {% block content %}
-<div class="page-heading"><div><h1>آگهی‌ها</h1><p>ثبت آگهی، بررسی تخصیص و مدیریت اطلاعات ثبت‌شده</p></div><div class="actions no-print"><a class="button button-with-icon" href="{{ url_for('web.ad_new') }}">{{ icon('plus') }} ثبت آگهی جدید</a>{% include 'partials/report-exports.html' %}</div></div>
+<div data-live-page="admin-advertisements">
+<div class="page-heading" data-page-region="heading"><div><h1>آگهی‌ها</h1><p>ثبت آگهی، بررسی تخصیص و مدیریت اطلاعات ثبت‌شده</p></div><div class="actions no-print"><a class="button button-with-icon" href="{{ url_for('web.ad_new') }}">{{ icon('plus') }} ثبت آگهی جدید</a>{% include 'partials/report-exports.html' %}</div></div>
 {% include 'partials/report-results.html' %}
+</div>
 {% if g.user.role == 'admin' %}{% include 'partials/ad-delete-dialog.html' %}{% endif %}
 {% endblock %}

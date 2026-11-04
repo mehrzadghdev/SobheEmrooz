@@ -26,7 +26,7 @@ COLUMNS = {
     'letter_date': 'تاریخ نامه سازمان', 'approved_units': 'حجم تایید شده', 'approver_name': 'فرد تاییدکننده',
     'approved_amount': 'مبلغ تایید شده (ریال)', 'allocation_date': 'تاریخ تخصیص',
 }
-DEFAULT_COLUMNS = ('id', 'ma_reference', 'organization', 'outlet', 'volume_units', 'allocation_date',
+DEFAULT_COLUMNS = ('id', 'ma_reference', 'subject', 'organization', 'outlet', 'volume_units', 'allocation_date',
                    'approval_date', 'print_status', 'amount')
 TEXT_FIELDS = {'subject_description': 1000, 'letter_number': 100, 'ad_text': 30000, 'box_size': 100,
                'page_type': 100, 'notes': 5000, 'distribution_location': 500, 'approver_name': 150}

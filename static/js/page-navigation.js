@@ -55,6 +55,120 @@
         main.prepend(alert);
     }
 
+    function syncControls(form, incoming, resetVisible) {
+        // Keep the actual controls alive so typing, focus, calendars and open
+        // filter disclosures survive a result update.
+        form.querySelectorAll(':scope > input[type="hidden"]').forEach(input => input.remove());
+        form.prepend(...[...incoming.querySelectorAll(':scope > input[type="hidden"]')].map(input => input.cloneNode(true)));
+        for (const source of incoming.elements) {
+            if (!source.name || source.type === 'hidden' || source.tagName === 'BUTTON') continue;
+            if (!resetVisible && source.name !== 'per_page') continue;
+            const controls = [...form.elements].filter(control => control.name === source.name);
+            const target = source.type === 'checkbox' || source.type === 'radio'
+                ? controls.find(control => control.value === source.value) : controls[0];
+            if (!target) continue;
+            if (source.type === 'checkbox' || source.type === 'radio') target.checked = source.checked;
+            else if (target.value !== source.value) {
+                target.value = source.value;
+                target.dispatchEvent(new Event('change', {bubbles: true}));
+            }
+        }
+        const copy = (selector, children = false) => {
+            const sources = incoming.querySelectorAll(selector);
+            form.querySelectorAll(selector).forEach((target, index) => {
+                const source = sources[index];
+                if (!source) return;
+                if (children) target.replaceChildren(...[...source.childNodes].map(node => node.cloneNode(true)));
+                else if (source.hasAttribute('href')) target.setAttribute('href', source.getAttribute('href'));
+            });
+        };
+        copy('.filter-disclosure > summary', true);
+        copy('.report-date-help', true);
+        copy('.filter-actions a');
+        form.dispatchEvent(new Event('change', {bubbles: true}));
+    }
+
+    function updateRegions(content, url, {pop, trigger}) {
+        const current = main.querySelector('[data-live-page]');
+        const incoming = content.querySelector('[data-live-page]');
+        const previous = new URL(renderedURL);
+        if (!current || !incoming || current.dataset.livePage !== incoming.dataset.livePage
+                || url.pathname !== previous.pathname) return false;
+        const regions = [...current.querySelectorAll('[data-page-region]')]
+            .filter(node => !node.parentElement.closest('[data-page-region]'));
+        const replacements = new Map([...incoming.querySelectorAll('[data-page-region]')]
+            .filter(node => !node.parentElement.closest('[data-page-region]'))
+            .map(node => [node.dataset.pageRegion, document.importNode(node, true)]));
+        if (!regions.length || regions.length !== replacements.size
+                || regions.some(node => !replacements.has(node.dataset.pageRegion))) return false;
+        const keys = new Set([...previous.searchParams.keys(), ...url.searchParams.keys()]);
+        const changed = [...keys].filter(key => JSON.stringify(previous.searchParams.getAll(key)) !== JSON.stringify(url.searchParams.getAll(key)));
+        const chartsOnly = changed.length && changed.every(key => key.startsWith('chart_'));
+        const resetVisible = pop || trigger?.closest('.filter-actions a, .period-controls');
+        const focused = document.activeElement;
+        const selection = focused instanceof HTMLInputElement && focused.type === 'search'
+            ? [focused.selectionStart, focused.selectionEnd] : null;
+        const sort = trigger?.closest('a.table-sort');
+        const sortKey = sort && new URL(sort.href).searchParams.get('sort');
+        for (const region of regions) {
+            const replacement = replacements.get(region.dataset.pageRegion);
+            const forms = [...region.querySelectorAll('form[data-live-controls]')];
+            for (const form of forms) {
+                const source = replacement.querySelector(`form[data-live-controls="${form.dataset.liveControls}"]`);
+                if (source) {
+                    syncControls(form, source, resetVisible);
+                }
+            }
+            if (region.hasAttribute('data-chart-panel')) {
+                const oldData = region.querySelector('[data-report-chart-data]')?.textContent;
+                const newData = replacement.querySelector('[data-report-chart-data]')?.textContent;
+                if (oldData === newData) continue;
+                document.dispatchEvent(new CustomEvent('sobhe:before-chart-update', {detail: {root: region}}));
+                region.replaceWith(replacement);
+            } else if (!chartsOnly) {
+                const controls = new Map(forms.filter(form => form.parentElement === region)
+                    .map(form => [form.dataset.liveControls, form]));
+                if (!controls.size) region.replaceChildren(...replacement.childNodes);
+                else {
+                    // Keep forms attached to the live document. Detaching them
+                    // interrupts focus and can strand running CSS transitions.
+                    const retained = new Set(controls.values());
+                    [...region.childNodes].forEach(node => { if (!retained.has(node)) node.remove(); });
+                    let buffer = [];
+                    for (const node of [...replacement.childNodes]) {
+                        const control = node.nodeType === Node.ELEMENT_NODE && controls.get(node.dataset.liveControls);
+                        if (control) {
+                            control.before(...buffer);
+                            buffer = [];
+                            retained.delete(control);
+                        } else buffer.push(node);
+                    }
+                    region.append(...buffer);
+                    retained.forEach(node => node.remove());
+                }
+            } else {
+                // Keep links in sync with the selected chart range without
+                // replacing a table that has not changed.
+                const selectors = '.table-sort, .pagination a, .report-exports a';
+                const links = region.querySelectorAll(selectors);
+                replacement.querySelectorAll(selectors).forEach((source, index) => {
+                    if (links[index]) links[index].href = source.href;
+                });
+            }
+        }
+        main.querySelectorAll('[data-navigation-error]').forEach(node => node.remove());
+        if (focused?.isConnected) {
+            focused.focus({preventScroll: true});
+            if (selection) focused.setSelectionRange(...selection);
+        } else if (sortKey) {
+            [...current.querySelectorAll('a.table-sort')]
+                .find(link => new URL(link.href).searchParams.get('sort') === sortKey)?.focus({preventScroll: true});
+        } else if (trigger?.closest('.chart-period-controls') && trigger.name === `chart_${trigger.closest('[data-chart-panel]')?.dataset.chartPanel}_range`) {
+            current.querySelector(`[data-chart-panel="${trigger.closest('[data-chart-panel]').dataset.chartPanel}"] [data-chart-range="${trigger.value}"]`)?.focus({preventScroll: true});
+        }
+        return true;
+    }
+
     async function navigate(url, {method = 'GET', body, pop = false, position, preserveScroll = false, trigger} = {}) {
         // A submitted mutation must finish before another page request can replace it.
         if (pending?.method === 'POST') return;
@@ -96,24 +210,27 @@
                 throw error;
             }
             finalURL.hash = url.hash;
-            document.dispatchEvent(new CustomEvent('sobhe:before-render'));
+            const updated = method === 'GET' && updateRegions(content, finalURL, {pop, trigger});
             animation?.cancel();
-            main.replaceChildren(...content.childNodes);
+            if (!updated) {
+                document.dispatchEvent(new CustomEvent('sobhe:before-render'));
+                main.replaceChildren(...content.childNodes);
+            }
             main.dataset.space = content.dataset.space;
             document.body.dataset.space = content.dataset.space;
             document.title = page.title;
             const incomingLinks = page.querySelector('.sidebar-links');
             const links = document.querySelector('.sidebar-links');
-            if (links && incomingLinks) links.replaceChildren(...incomingLinks.childNodes);
+            if (!updated && links && incomingLinks) links.replaceChildren(...incomingLinks.childNodes);
             if (pop || finalURL.href === location.href) history.replaceState(history.state, '', finalURL);
             else history.pushState({}, '', finalURL);
             renderedURL = location.href;
             // Initialize date fields before restoring scroll; enhancement changes their height.
             document.dispatchEvent(new CustomEvent('sobhe:page-render'));
-            main.focus({preventScroll: true});
-            scrollToDestination(finalURL, position || (preserveScroll ? previousScroll : null));
+            if (!updated) main.focus({preventScroll: true});
+            scrollToDestination(finalURL, position || (preserveScroll || updated ? previousScroll : null));
             saveScroll();
-            if (!reducedMotion.matches && main.animate) {
+            if (!updated && !reducedMotion.matches && main.animate) {
                 animation = main.animate(
                     [{opacity: 0, transform: 'translateY(6px)'}, {opacity: 1, transform: 'translateY(0)'}],
                     {duration: 300, easing: 'ease-out'},

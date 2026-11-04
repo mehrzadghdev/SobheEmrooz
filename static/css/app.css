@@ -128,8 +128,8 @@ button.danger:focus-visible,
     direction: rtl;
     display: grid;
     grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
-    grid-template-rows: auto 1fr auto;
-    grid-template-areas: "sidebar header" "sidebar main" "sidebar footer";
+    grid-template-rows: auto 1fr;
+    grid-template-areas: "sidebar header" "sidebar main";
     min-height: 100dvh;
     transition: grid-template-columns var(--motion-duration) ease, var(--theme-transition, background-color 0s);
 }

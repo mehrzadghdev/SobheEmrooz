@@ -136,6 +136,29 @@ Check `/admin/advertisements` and the 1405 dashboard after import. Public report
 must use allocation date because the source has no approval dates. This is a
 console command; deploying code alone never imports records.
 
+### Import the revised 12 آبان workbook
+
+Upload `12 آبان.xlsx` alongside `app.py` and deploy the updated importer. In the
+host console, using the existing administrator username (the workbook path is
+resolved automatically from the deployed project):
+
+```sh
+export SOBHE_DATA_DIR=/data
+python -m flask --app app migrate
+python -m flask --app app import-12-aban --username admin
+python -m flask --app app import-12-aban --username admin --apply
+```
+
+Review the dry run before applying: 300 rows, 158 distinct source IDs, 1,578
+boxes and 40,586,000,000 rials. Every row is kept with a generated unique app ID;
+the source ID is retained in notes. The command creates the same verified
+backup as `import-1405`. It compares publication fields against existing rows
+and import fingerprints, then adds only unmatched occurrences. After the
+previous workbook import, expect **294 skipped and 6 new rows**, adding
+**36 boxes and 612,000,000 rials**. Earlier rows absent from this workbook
+remain saved. Existing records are never overwritten or deleted. A repeat
+adds zero rows. `import-1405 --incremental` enables the same behavior.
+
 Keep the existing permanent path and session secret. Before replacing a running
 version, create a backup in the host console and download it with the file manager:
 
@@ -153,6 +176,21 @@ chabok service logs --service sobhe-emrooz
 Ordinary code deployments preserve the current database and accounts. Run a
 migration only when a release requires one; do not repeat account creation or
 demo seeding. If needed, restart with `chabok service restart --service sobhe-emrooz`.
+
+### Diagnose a 502 after deployment
+
+Read `chabok service logs --service sobhe-emrooz` before restarting or deploying
+again. An accepted upload and a service status of `on` do not confirm that the
+application is ready. If the latest lines show `Installing Python packages from
+requirements.txt`, the application server has not started yet. With Python
+package persistence disabled, the observed 2026-11-04 deployment spent about
+4½ minutes installing dependencies before Gunicorn started. Repeated restarts
+can repeat this delay.
+
+Wait for `All packages installed successfully`, `Listening at`, and `Booting
+worker`, then check the public URL. If logs instead show a package-install
+failure, traceback, worker exit, or repeated worker boot, diagnose that error.
+Do not rerun imports or migrations to address a dependency-installation delay.
 
 References: [Flask deployment](https://docs.chabokan.net/cloud-hosting/flask/deploy/),
 [Gunicorn settings](https://docs.chabokan.net/cloud-hosting/flask/more/),

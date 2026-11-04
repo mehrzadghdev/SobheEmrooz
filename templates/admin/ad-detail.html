@@ -1,10 +1,10 @@
 {% extends 'layouts/admin.html' %}
 {% from 'partials/back-link.html' import back_link %}
 {% from 'partials/icons.html' import icon %}
-{% block title %}آگهی م/الف {{ ad.ma_reference }} | پنل مدیریت{% endblock %}
+{% block title %}آگهی با شناسه {{ ad.ma_reference }} | پنل مدیریت{% endblock %}
 {% block content %}
 {{ back_link(url_for('web.advertisements',year=ad.period.year), 'بازگشت به آگهی‌ها') }}
-<div class="page-heading"><div><h1>آگهی م/الف {{ ad.ma_reference }}</h1><p>{{ ad.organization.name }} · {{ ad.outlet.name }}</p></div><div class="actions no-print">{% if g.user.role == 'admin' and not ad.voided_at %}<a class="button" href="{{ url_for('web.ad_edit',ad_id=ad.id) }}">ویرایش آگهی</a><button type="button" class="button-with-icon secondary danger-action" data-delete-ad data-delete-url="{{ url_for('web.ad_void',ad_id=ad.id) }}" data-ad-version="{{ ad.version }}" data-ad-reference="{{ ad.ma_reference }}" aria-haspopup="dialog">{{ icon('delete') }} حذف آگهی</button>{% endif %}</div></div>
+<div class="page-heading"><div><h1>آگهی با شناسه {{ ad.ma_reference }}</h1><p>{{ ad.organization.name }} · {{ ad.outlet.name }}</p></div><div class="actions no-print">{% if g.user.role == 'admin' and not ad.voided_at %}<a class="button" href="{{ url_for('web.ad_edit',ad_id=ad.id) }}">ویرایش آگهی</a><button type="button" class="button-with-icon secondary danger-action" data-delete-ad data-delete-url="{{ url_for('web.ad_void',ad_id=ad.id) }}" data-ad-version="{{ ad.version }}" data-ad-reference="{{ ad.ma_reference }}" aria-haspopup="dialog">{{ icon('delete') }} حذف آگهی</button>{% endif %}</div></div>
 {% if ad.voided_at %}<div class="alert danger">این آگهی باطل شده و در محاسبات سهمیه و گزارش عمومی لحاظ نمی‌شود.<br>دلیل: {{ ad.void_reason }}</div>{% endif %}
 {% include 'partials/ad-record.html' %}
 {% if g.user.role == 'admin' and not ad.voided_at %}{% include 'partials/ad-delete-dialog.html' %}{% endif %}

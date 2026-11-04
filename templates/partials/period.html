@@ -1,4 +1,4 @@
-<form class="period-controls no-print" method="get">
+<form class="period-controls no-print" method="get" data-live-controls="period">
   {% if request.endpoint == 'web.reports' %}<input type="hidden" name="view" value="{{ view }}">{% endif %}
   <label for="period-year">سال شمسی<input id="period-year" name="year" inputmode="numeric" value="{{ selected.year }}" required maxlength="4"></label>
   <button class="secondary">نمایش دوره</button>

@@ -125,7 +125,7 @@ def report_page(management=False):
                      row['category_percent']] for row in state['rows']]
             group_headers = ['گروه', 'هدف از کل (درصد)', 'حجم دریافتی (کادر)', 'درصد واقعی از کل', 'حجم هدف (کادر)', 'وضعیت گروه']
             group_data = [[labels[key], group['target_percent'], group['allocated'], group['actual_percent'],
-                           group['expected'], 'بیشتر از هدف گروه' if group['exceeded'] else 'در محدوده هدف گروه']
+                           group['expected'], group['status_label']]
                           for key, group in state['groups'].items()]
             return spreadsheet(headers, data, extra_sheets=[('گروه‌ها', group_headers, group_data)])
         elif view == 'organizations':
@@ -158,8 +158,12 @@ def report_page(management=False):
 
 
 def public_allocation_charts(state, year):
-    charts = report.allocation_charts(state, year)
-    for group in charts['groups']:
+    try:
+        charts = {kind: report.allocation_charts(state, year, report.chart_args(request.args, kind))
+                  for kind in ('bar', 'pie')}
+    except ValueError as error:
+        abort(400, str(error))
+    for group in charts['pie']['groups']:
         for media in group['media']:
             media['url'] = url_for('web.media_detail', outlet_id=media['id'], year=year)
     return charts
