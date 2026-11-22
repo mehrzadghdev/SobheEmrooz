@@ -1,9 +1,11 @@
 import json
+import io
 import unicodedata
 from datetime import datetime
 
 from sobhe.models import Advertisement, AuditEvent, Organization, Setting, db
 from unittest.mock import MagicMock, patch
+from openpyxl import load_workbook
 
 from sobhe.workbook_import import import_rows, read_rows, resolve_workbook, HEADERS, IDENTIFIED_HEADERS, IMPORT_KEY
 from tests.support import AppTestCase
@@ -84,6 +86,30 @@ class WorkbookImportTests(AppTestCase):
             import_rows([dict(self.rows()[0], source_id=2318993)], 'administrator', '12 آبان.xlsx', apply=True)
         db.session.rollback()
         self.assertEqual(Advertisement.query.count(), 1)
+
+    def test_lists_search_sort_filter_and_export_use_source_identifier(self):
+        rows = [dict(self.rows()[0], source_id=2318993),
+                dict(self.rows()[0], row=3, source_id=1234567, date='2026-10-27'),
+                dict(self.rows()[0], row=4, source_id=2318993, date='2026-10-28')]
+        import_rows(rows, 'administrator', '12 آبان.xlsx', apply=True)
+        ads = Advertisement.query.order_by(Advertisement.id).all()
+        from sobhe.tables import ad_table_query
+        self.assertEqual([ad.display_reference for ad in ad_table_query(
+            Advertisement.query, {'sort': 'ma_reference', 'direction': 'asc'}).all()],
+            [1234567, 2318993, 2318993])
+        for path in ('/admin/advertisements', '/reports'):
+            response = self.client.get(path, query_string={'year': 1405, 'q': '۲۳۱۸۹۹۳'})
+            self.assertEqual(response.status_code, 200)
+            self.assertIn('2318993', response.text)
+            self.assertNotIn('1234567', response.text)
+            self.assertNotIn(str(ads[0].ma_reference), response.text)
+            response = self.client.get(path, query_string={
+                'year': 1405, 'ma_min': 2318993, 'ma_max': 2318993,
+                'export': 'xlsx', 'columns': 'ma_reference'})
+            self.assertEqual(response.status_code, 200)
+            values = list(load_workbook(io.BytesIO(response.data)).active.values)
+            self.assertEqual(values, [('شناسه آگهی',), (2318993,), (2318993,)])
+        self.assertEqual(len({ad.ma_reference for ad in ads}), 3)
 
     def test_new_command_dry_run_rolls_back(self):
         with patch('sobhe.workbook_import.read_rows', return_value=[dict(self.rows()[0], source_id=2318993)]):

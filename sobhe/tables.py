@@ -5,6 +5,7 @@ from .models import Advertisement, Organization, Outlet, Subject
 
 def ad_table_query(query, args):
     fields = {column.name: column for column in Advertisement.__table__.columns}
+    fields['ma_reference'] = Advertisement.display_reference
     from .directive import DirectiveRecord
     allocation = DirectiveRecord.__table__.alias('allocation_reference')
     order = DirectiveRecord.__table__.alias('official_order')

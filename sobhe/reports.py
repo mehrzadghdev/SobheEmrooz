@@ -51,10 +51,12 @@ def filtered_query(args, year, *, apply_dates=True):
         upper = integer(args.get(maximum_key), optional=True)
         if lower is not None and upper is not None and lower > upper:
             raise ValueError('حداقل عدد نمی‌تواند بیشتر از حداکثر باشد.')
+        column = (Advertisement.display_reference if field_name == 'ma_reference'
+                  else getattr(Advertisement, field_name))
         if lower is not None:
-            query = query.filter(getattr(Advertisement, field_name) >= lower)
+            query = query.filter(column >= lower)
         if upper is not None:
-            query = query.filter(getattr(Advertisement, field_name) <= upper)
+            query = query.filter(column <= upper)
     for key in ('organization_id', 'outlet_id', 'subject_id'):
         value = integer(args.get(key), 1, optional=True)
         if value:
@@ -79,6 +81,8 @@ def filtered_query(args, year, *, apply_dates=True):
 
 
 def cell(ad, key):
+    if key == 'ma_reference':
+        return ad.display_reference
     if key == 'official_reference':
         from .directive import official_reference
         return official_reference(ad)

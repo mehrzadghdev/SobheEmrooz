@@ -1,7 +1,8 @@
 """SQLite-backed records. Box values are integer hundredths."""
 from datetime import datetime, timezone
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import CheckConstraint, UniqueConstraint
+from sqlalchemy import BigInteger, CheckConstraint, UniqueConstraint, case, cast, func
+from sqlalchemy.ext.hybrid import hybrid_property
 
 db = SQLAlchemy()
 
@@ -72,6 +73,26 @@ class OutletTarget(db.Model):
 class Advertisement(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     ma_reference = db.Column(db.BigInteger, unique=True, nullable=False)
+
+    @hybrid_property
+    def display_reference(self):
+        """Workbook identifiers may repeat across separate publication records."""
+        marker = 'شناسه آگهی در منبع: '
+        if marker in (self.notes or ''):
+            value = self.notes.split(marker, 1)[1].split('.', 1)[0].strip()
+            if value.isdecimal() and int(value) > 0:
+                return int(value)
+        return self.ma_reference
+
+    @display_reference.expression
+    def display_reference(cls):
+        marker = 'شناسه آگهی در منبع: '
+        start = func.instr(cls.notes, marker)
+        tail = func.substr(cls.notes, start + len(marker))
+        value = func.trim(func.substr(tail, 1, func.instr(tail, '.') - 1))
+        valid = (start > 0) & (value != '') & ~value.op('GLOB')('*[^0-9]*') & (cast(value, BigInteger) > 0)
+        return case((valid, cast(value, BigInteger)), else_=cls.ma_reference)
+
     organization_id = db.Column(db.Integer, db.ForeignKey('organization.id'), nullable=False, index=True)
     outlet_id = db.Column(db.Integer, db.ForeignKey('outlet.id'), nullable=False, index=True)
     period_id = db.Column(db.Integer, db.ForeignKey('period.id'), nullable=False, index=True)
